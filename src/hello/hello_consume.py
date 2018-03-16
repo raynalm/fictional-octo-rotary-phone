@@ -1,22 +1,17 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
-
+#!/usr/bin/env python
 import pika
-connection = pika.BlockingConnection()
+
+connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
 channel = connection.channel()
 
-for method_frame, properties, body in channel.consume('test'):
+channel.queue_declare(queue='hello')
 
-    # Display the message parts and ack the message
-    print(method_frame, properties, body)
-    channel.basic_ack(method_frame.delivery_tag)
+def callback(ch, method, properties, body):
+    print(" [x] Received %r" % body)
 
-    # Escape out of the loop after 10 messages
-    if method_frame.delivery_tag == 10:
-        break
+channel.basic_consume(callback,
+                      queue='queue0',
+                      no_ack=True)
 
-# Cancel the consumer and return any pending messages
-requeued_messages = channel.cancel()
-print('Requeued %i messages' % requeued_messages)
-connection.close()
+print(' [*] Waiting for messages. To exit press CTRL+C')
+channel.start_consuming()
