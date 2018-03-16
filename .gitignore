@@ -2,3 +2,5 @@
 /lab/lab_ids/
 *.class
 \#*
+*.pyc
+*\#
