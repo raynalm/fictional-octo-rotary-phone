@@ -1,25 +1,31 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import sys
 import pika
 import json
 from lib.config  import *
-from lib.graph   import *
+from lib.graph_gen   import *
 
-# MAIN LAUNCHER ________________________________________________________________
+# MAIN LAUNCHER _______________________________________________________
 class MainLauncher:
-    def __init__(self, n = DEFAULT_MATRIX_SIZE, s = 0):
+    def __init__(self, args):
         """
         Args:
             n: int, the number of nodes in the network
             s: int, the number of edges in the network
         """
-        self.nb_nodes = n
-        self.adj_matrix = adj_matrix(gen_graph(n, s))
-        self.nodes_id = []
+        if len(args) > 0:
+            self.__nb_nodes = int(args[0])
+            if len(args) > 1:
+                s = int(args[1])
+        else :
+            s = 0
+            self.__nb_nodes = DEFAULT_MATRIX_SIZE
+        self.__adj_matrix = adj_matrix(gen_graph(self.__nb_nodes, s))
+        self.__nodes_id = []
 
 
-    def init_callback(ch, method, properties, body):
+    def init_callback(self, ch, method, properties, body):
         """
         Called upon first com from node to main launcher.
 
@@ -48,7 +54,7 @@ class MainLauncher:
         # collect the id from all nodes in the network
         channel.queue_declare(queue = INIT_QUEUE_NAME)
         channel.basic_consume(
-            init_callback,
+            self.init_callback,
             queue = INIT_QUEUE_NAME,
             no_ack = True         # TODO -> make sure no_ack is the good choice
         )
@@ -69,3 +75,10 @@ class MainLauncher:
               "\nExiting")
         connection.close()
         sys.exit()
+
+if __name__ == "__main__":
+    if len(sys.argv) > 3:
+        print("usage : %s [n] [s]\nWith n = nb nodes, s=nb_edges"
+              % sys.argv[0])
+    launcher = MainLauncher(sys.argv[1:])
+    launcher.launch_network()

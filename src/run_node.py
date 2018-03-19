@@ -1,13 +1,17 @@
 import sys
 from lib.node import *
-from random   import SystemRandom
+import random
 
 def main(args):
     # first, you choose a random number
     # and communicate it to the server, it will be the node id
-    my_id = SystemRandom(RANDOM_START, RANDOM_END)
-    Node node = Node(my_id)
-    node.launch
+    rng = random.SystemRandom()
+    if len(args) == 1:
+        my_id = rng.randrange(RANDOM_START, RANDOM_END)
+    else:
+        my_id = int(args[1])
+    node = Node(my_id)
+    node.launch()
 
 
 
