@@ -1,7 +1,8 @@
 from lib.config  import *
+from lib.utils   import *
 from random import choice, randrange
 
-def gen_graph(n, s = 0):
+def gen_graph(n, s):
     """
     Builds a (somehow) random graph with n vertices and s edges.
     Args:
@@ -11,14 +12,18 @@ def gen_graph(n, s = 0):
     Returns:
         A dictionary {u: {v_1, ..., v_i}} representing the graph's edges
     """
+    # get the number of edges
     if s == 0:        # get the default sparseness if need be
-        s = min(n-1, DEFAULT_SPARSENESS)
-    print("n %s s %s" % (n, s))
+        s = int(DEFAULT_SPARSENESS*n*(n-1)/2)
+    else:             # get a reasonnable number of edges
+        s = min(max(n-1, s), n*(n-1))
+    print_debug("graph_gen : n= %s s= %s" % (n, s))
+
     edges = {v: set() for v in range(n)}
-    print(edges)
+    print_debug(edges)
     # first we build the graph's spanning tree
     to_connect = {v for v in edges}
-    print(to_connect)
+    print_debug(to_connect)
     connected = set()
     v = choice(tuple(to_connect))
     to_connect.remove(v)
