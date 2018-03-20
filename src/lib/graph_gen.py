@@ -1,7 +1,8 @@
 from lib.config  import *
-from random import choice
+from lib.utils   import *
+from random import choice, randrange
 
-def gen_graph(n, s = 0):
+def gen_graph(n, s):
     """
     Builds a (somehow) random graph with n vertices and s edges.
     Args:
@@ -11,21 +12,26 @@ def gen_graph(n, s = 0):
     Returns:
         A dictionary {u: {v_1, ..., v_i}} representing the graph's edges
     """
+    # get the number of edges
     if s == 0:        # get the default sparseness if need be
-        s = min(n-1, DEFAULT_SPARSENESS)*N
+        s = int(DEFAULT_SPARSENESS*n*(n-1)/2)
+    else:             # get a reasonnable number of edges
+        s = min(max(n-1, s), n*(n-1))
+    print_debug("graph_gen : n= %s s= %s" % (n, s))
 
     edges = {v: set() for v in range(n)}
-
+    print_debug(edges)
     # first we build the graph's spanning tree
-    to_connect = {v for v in range(n)}
+    to_connect = {v for v in edges}
+    print_debug(to_connect)
     connected = set()
-    v = choice(to_connect)
+    v = choice(tuple(to_connect))
     to_connect.remove(v)
     connected.add(v)
 
     while to_connect: #is not empty
-        u = choice(to_connect)
-        v = choice(connected)
+        u = choice(tuple(to_connect))
+        v = choice(tuple(connected))
         edges[u].add(v)
         edges[v].add(u)
         to_connect.remove(u)
@@ -34,6 +40,7 @@ def gen_graph(n, s = 0):
     # now we need to add s-n+1 edges
     to_add = s-n+1
     while to_add > 0:
+        #print(to_add)
         u, v = randrange(n), randrange(n)
         if u != v and v not in edges[u]:
             edges[u].add(v)
@@ -51,4 +58,4 @@ def adj_matrix(edges):
         m, the adjacency matrix
     """
     n = len(edges)
-    return [[1 if j in e[1] else 0 for j in range(n)] for i in range(n)]
+    return [[1 if j in edges[1] else 0 for j in range(n)] for i in range(n)]
