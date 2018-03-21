@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
 import sys
 import pika
 import json
 import random
 
-from lib.config  import *
-from lib.graph_gen   import *
+from lib.config import INIT_QUEUE_NAME, RANDOM_START, RANDOM_END
+from lib.config import DEFAULT_MATRIX_SIZE
+from lib.graph_gen import gen_graph
 
 
-# MAIN LAUNCHER CLASS _________________________________________________________
+# _________________________________________________________________________
+# _______________________ MAIN LAUNCHER CLASS _____________________________
+# _________________________________________________________________________
 
 class MainLauncher:
     def __init__(self, n, s):
@@ -18,12 +22,13 @@ class MainLauncher:
             n: int, the number of nodes in the network
             s: int, the number of edges in the network
         """
-        self.__nb_nodes = n
-        self.__adjacencies = gen_graph(n, s)
-        self.__nodes_id = []
+        self.nb_nodes = n
+        self.adjacencies = gen_graph(n, s)
+        self.nodes_id = []
 
+# _________________________________________________________________________
+# _______________________ LAUNCH NETWORK___________________________________
 
-    # LAUNCH NETWORK __________________________________________________________
     def launch_network(self):
         """
         Launches the network
@@ -34,7 +39,7 @@ class MainLauncher:
         # start a beautiful narrative with the user
         print("you can now run all nodes in new terminals by typing: "
               "./python run_node.\n You need to launch %s nodes in order "
-              "to start the network." % self.__nb_nodes)
+              "to start the network." % self.nb_nodes)
 
         print("Starting to collect nodes ids ....")
         # collect the id from all nodes in the network
@@ -47,98 +52,110 @@ class MainLauncher:
         # job done, exiting
         self.exit_program()
 
+# _________________________________________________________________________
+# _______________________ INIT CONNECTION _________________________________
 
-    # INIT CONNECTION _________________________________________________________
     def init_connection(self):
         """
-        Initializes Rabbitmq connection and creates a channel to receive the ids
+        Initializes Rabbitmq connection and creates a channel to receives
+        the ids from the PikaNodes
         """
-         # init pika connection and channel
-        self.__connection = pika.BlockingConnection(
+        # init pika connection and channel
+        self.connection = pika.BlockingConnection(
             pika.ConnectionParameters(host='localhost')
         )
-        self.__channel = self.__connection.channel()
-        self.__channel.queue_declare(INIT_QUEUE_NAME)
+        self.channel = self.connection.channel()
+        self.channel.queue_delete(queue=INIT_QUEUE_NAME)
+        self.channel.queue_declare(queue=INIT_QUEUE_NAME)
+        self.channel.confirm_delivery()
 
+# _________________________________________________________________________
+# _______________________ SEND MSG ________________________________________
 
-    # COLLECT NODES ID ________________________________________________________
+    def send_msg(self, msg, queue_name=INIT_QUEUE_NAME):
+        """
+        Sends a message on a queue
+        Args:
+            msg: json str, the message to send
+            queue_name: str, the queue to send it on
+        """
+        if not self.channel.basic_publish(
+            exchange='',
+            routing_key=queue_name,
+            body=msg
+        ):                      # unhappy smiley because it's a failure case
+            self.handle_msg_not_send(msg, queue_name)
+
+    def handle_msg_not_send(self, msg, queue_name):
+        print("Could not publish the message : <%s> "
+              "on the queue : %s" % (msg, queue_name))
+        self.exit_program()
+
+# _________________________________________________________________________
+# _______________________ COLLECT PIKA_NODES IDS __________________________
+
     def collect_nodes_id(self):
         """
         Collects the identifiers from all nodes on the network
         """
-        self.__channel.basic_consume(
-            self.collect_nodes_id_callback,
-            queue = INIT_QUEUE_NAME,
-            no_ack = True
-        )
-        self.__channel.start_consuming()
+        for method_f, pr, body in self.channel.consume(INIT_QUEUE_NAME):
+            # ack
+            self.channel.basic_ack(method_f.delivery_tag)
 
+            # reply
+            node_id = json.loads(body)
+            send_queue = INIT_QUEUE_NAME+str(node_id)
+            if node_id in self.nodes_id:
+                node_id = self.choose_new_id()
+            self.channel.queue_declare(send_queue)
+            self.send_msg(json.dumps(node_id), send_queue)
 
-    def collect_nodes_id_callback(self, ch, method_frame, header_frame, body):
-        """
-        Callback : collect one identifier and checks if it is unique
-        """
-        new_node_id = json.loads(body)
-        if new_node_id in self.__nodes_id:
-            new_node_id = self.choose_new_id()
-        self.send_back_id(new_node_id)
-        self.__nodes_id += [new_node_id]
-
-        if len(self.__nodes_id) == self.__nb_nodes:
-            self.__channel.stop_consuming()
-        print_debug("Nodes so far : ")
-        print_debug("%s" % self.__nodes_id)
-
-    def send_back_id(self, node_id):
-        send_queue = INIT_QUEUE_NAME+str(node_id)
-        self.__channel.queue_declare(send_queue)
-        msg = json.dumps(node_id)
-        self.__channel.basic_publish(
-            exchange = '',
-            routing_key = send_queue,
-            body = msg
-        )
+            # store
+            self.nodes_id += [node_id]
+            if len(self.nodes_id) == self.nb_nodes:
+                break
 
     def choose_new_id(self):
         """
-        Generates a random number which is not in self.__nodes_id list
+        Generates a random number which is not in self.nodes_id list
         already
         """
         rng = random.SystemRandom()
         new_id = rng.randrange(RANDOM_START, RANDOM_END)
-        while new_id in self.__nodes_id:
+        while new_id in self.nodes_id:
             new_id = rng.randrange(RANDOM_START, RANDOM_END)
         return new_id
 
-    # SEND NEIGHBORS __________________________________________________________
+# _________________________________________________________________________
+# _______________________ SEND NEIGHBORS IDS ______________________________
+
     def send_neighbors(self):
-        for i, v in enumerate(self.__nodes_id):
-            # get the list of neighbors' ids and json it
-            neighbors = [self.__nodes_id[j] for j in self.__adjacencies[i]]
-            msg = json.dumps(neighbors)
-            # create a dedicated queue
-            neighbors_queue = INIT_QUEUE_NAME+str(v)
-            self.__channel.queue_declare(neighbors_queue)
-            # send it all
-            self.__channel.basic_publish(
-                exchange = '',
-                routing_key = neighbors_queue,
-                body = msg
-            )
+        """
+        Sends to each PikaNode in the network the list of its neighbors' id
+        """
+        for i, v in enumerate(self.nodes_id):
+            # get the list of neighbors' ids
+            neighbors = [self.nodes_id[j] for j in self.adjacencies[i]]
 
+            # create a dedicated queue and send the list
+            send_queue = INIT_QUEUE_NAME+str(v)
+            self.channel.queue_declare(INIT_QUEUE_NAME+str(v))
+            self.send_msg(json.dumps(neighbors), send_queue)
 
-    # EXIT PROGRAM ____________________________________________________________
+# _________________________________________________________________________
+# _______________________ EXIT PROGRAM ____________________________________
+
     def exit_program(self):
         """
         Close the connection and exits
         """
         print("Exiting")
-        self.__connection.close()
+        self.connection.close()
         sys.exit()
 
 
-
-# MAIN ________________________________________________________________________
+# _________________________________________________________________________
+# _______________________ MAIN ____________________________________________
 
 if __name__ == "__main__":
     n = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_MATRIX_SIZE
