@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+from lib.yo_yo import yo_yo
+from lib.multishout import multishout
+
 
 # contains all constants
 PRINT_DEBUG = False
@@ -17,3 +20,13 @@ OUT = 1
 SOURCE = 0
 INTERMEDIATE = 1
 SINK = 2
+
+
+USE_YO_YO = True
+
+
+def elect_leader(node):
+    if USE_YO_YO:
+        return yo_yo(node)
+    else:
+        return multishout(node)
