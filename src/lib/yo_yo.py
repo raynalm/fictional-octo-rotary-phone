@@ -2,41 +2,43 @@
 # -*- coding: utf-8 -*-
 
 
-# YO-YO ALGORITHM MACROS
+# YO-YO ALGORITHM MACROS ______________________________________________________
+# edges
 IN = "IN"
 OUT = "OUT"
 PRUNED = "PRUNED"
-
+# roles
 SOURCE = "SOURCE"
 INTERMEDIATE = "INTERMEDIATE"
 SINK = "SINK"
 LEADER = "LEADER"
-
+# upstream answers
 YES = "YES"
 NO = "NO"
-
+# pruning request
 PRUNE_OUR_LINK = "PRUNE"
 DONT_PRUNE_OUR_LINK = "NO_PRUNE"
 
 
-# _________________________________________________________________________
-# _______________________ YO-YO ALGORITHM _________________________________
-# _________________________________________________________________________
+# _____________________________________________________________________________
+# _______________________ YO-YO ALGORITHM _____________________________________
+# _____________________________________________________________________________
 
 
 def yo_yo(node):
     """
-    yoyo algorithm implementation
+    yoyo algorithm 'main'.
+    The result is actually stored in node.role (leader or not)
     """
     node.edges = dict()
     yo_yo_preprocess(node)
     do_yo_yo(node)
-    return node.role == LEADER
 
 
 def yo_yo_preprocess(node):
     """
-    Preprocessing phase of the yoyo algorithm
+    Preprocessing phase of the yoyo algorithm.
+    Logically orients edges and initialize node's role
     """
     # logically orient edges
     for v in node.neighbors_ids:
@@ -159,18 +161,30 @@ def oy_phase(node):
 # YO-YO UTILS _____________________________________________________________
 
 def active_edges(node):
+    """
+    Returns the list of node's edges which have not been pruned yet
+    """
     return [v for v in node.edges if node.edges[v] != PRUNED]
 
 
 def out_edges(node):
+    """
+    Returns the list of node's out edges
+    """
     return [v for v in active_edges(node) if node.edges[v] == OUT]
 
 
 def in_edges(node):
+    """
+    Returns the list of node's in edges
+    """
     return [v for v in active_edges(node) if node.edges[v] == IN]
 
 
 def flip_edges(node):
+    """
+    Flips the logical orientation of node's edges which are in edges_to_flip
+    """
     for v in node.edges:
         if v in node.edges_to_flip:
             node.edges[v] = "IN" if node.edges[v] == "OUT" else "OUT"
@@ -179,10 +193,17 @@ def flip_edges(node):
 
 
 def is_sink(node):
+    """
+    Returns true iff node is a sink. This method does not check node.role,
+    but actually checks edges to see if the node is currently a sink
+    """
     return not any(node.edges.values() == OUT)
 
 
 def is_leaf(node):
+    """
+    Returns true iff node is a sink with exactly one in edge
+    """
     return (len(in_edges(node)) == 1) and (len(out_edges(node)) == 0)
 
 
@@ -201,6 +222,9 @@ def get_role(node):
 
 
 def print_edges(node):
+    """
+    Utility printing oriented edges
+    """
     for v in node.edges:
         if node.edges[v] == IN:
             print("%s <--- %s" % (node.my_id, v))

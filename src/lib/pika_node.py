@@ -157,6 +157,9 @@ class PikaNode:
         self.channel.stop_consuming()
 
     def yoyo_recv_id_callback(self, ch, method_frame, properties, body):
+        """
+        yo_yo specific callback. Stores the candidate's id received in a dict.
+        """
         # ack
         self.channel.basic_ack(method_frame.delivery_tag)
         print("yoyo callback, received %s" % json.loads(body))
@@ -166,6 +169,10 @@ class PikaNode:
         self.channel.stop_consuming()
 
     def oy_oy_callback(self, ch, method_frame, properties, body):
+        """
+        yo_yo specific callback. Stores the yes/no answer received, and
+        processesthe pruning/not pruning request
+        """
         # ack
         self.channel.basic_ack(method_frame.delivery_tag)
         print("oyoy callback, received %s" % json.loads(body))
