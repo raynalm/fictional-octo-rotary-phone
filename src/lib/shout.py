@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from config import YES, NO, LEADER, FLUX
+from lib.config import YES, NO, LEADER, FLUX
 
 
 def shout(node):
