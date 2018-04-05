@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from lib.yo_yo import yo_yo
-from lib.multishout import multishout
 
 
 # contains all constants
@@ -13,11 +11,6 @@ RANDOM_END = 1000
 DEFAULT_MATRIX_SIZE = 3
 DEFAULT_SPARSENESS = 0.3
 MSG_ID_OK = "message id is ok"
-IN = 0
-OUT = 1
-SOURCE = 0
-INTERMEDIATE = 1
-SINK = 2
 
 MAIN_PUB = "main_pub"
 MAIN_PRIV = "main_priv"
@@ -26,9 +19,28 @@ QUEUE_PREFIX = "q_pr_"
 
 USE_YO_YO = True
 
+# YO-YO ALGORITHM MACROS ______________________________________________________
+# edges
+IN = "IN"
+OUT = "OUT"
+PRUNED = "PRUNED"
+# roles
+SOURCE = "SOURCE"
+INTERMEDIATE = "INTERMEDIATE"
+SINK = "SINK"
+LEADER = "LEADER"
+# upstream answers
+YES = "YES"
+NO = "NO"
+# pruning request
+PRUNE_OUR_LINK = "PRUNE"
+DONT_PRUNE_OUR_LINK = "NO_PRUNE"
 
-def elect_leader(node):
-    if USE_YO_YO:
-        return yo_yo(node)
-    else:
-        return multishout(node)
+# SHOUT ALGORITHM MACROS ______________________________________________________
+ANSWER = "ANSWER"
+FLUX = "FLUX"
+REFLUX = "REFLUX"
+
+# RING ALGORITHM MACROS _______________________________________________________
+WHITE = "WHITE"
+BLACK = "BLACK"

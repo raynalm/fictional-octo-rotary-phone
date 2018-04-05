@@ -1,42 +1,29 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-
-# YO-YO ALGORITHM MACROS
-IN = "IN"
-OUT = "OUT"
-PRUNED = "PRUNED"
-
-SOURCE = "SOURCE"
-INTERMEDIATE = "INTERMEDIATE"
-SINK = "SINK"
-LEADER = "LEADER"
-
-YES = "YES"
-NO = "NO"
-
-PRUNE_OUR_LINK = "PRUNE"
-DONT_PRUNE_OUR_LINK = "NO_PRUNE"
+from lib.config import YES, NO, SOURCE, SINK, LEADER, PRUNED, IN, OUT
+from lib.config import INTERMEDIATE, PRUNE_OUR_LINK, DONT_PRUNE_OUR_LINK
 
 
-# _________________________________________________________________________
-# _______________________ YO-YO ALGORITHM _________________________________
-# _________________________________________________________________________
+# _____________________________________________________________________________
+# _______________________ YO-YO ALGORITHM _____________________________________
+# _____________________________________________________________________________
 
 
 def yo_yo(node):
     """
-    yoyo algorithm implementation
+    yoyo algorithm 'main'.
+    The result is actually stored in node.role (leader or not)
     """
     node.edges = dict()
     yo_yo_preprocess(node)
     do_yo_yo(node)
-    return node.role == LEADER
 
 
 def yo_yo_preprocess(node):
     """
-    Preprocessing phase of the yoyo algorithm
+    Preprocessing phase of the yoyo algorithm.
+    Logically orients edges and initialize node's role
     """
     # logically orient edges
     for v in node.neighbors_ids:
@@ -81,7 +68,7 @@ def oy_phase(node):
     """
     -YO phase of the YO-YO algorithm
     """
-    print("[%s] start yo, role is %s" % (node.my_id, node.role))
+    print("[%s] start oy, role is %s" % (node.my_id, node.role))
     node.yes_no_received = dict()
     node.edges_to_flip = []
     ids_already_sent = set()
@@ -128,21 +115,24 @@ def oy_phase(node):
                 # determine if link should be pruned or not
                 if node.id_received[v] in ids_already_sent:
                     prune_or_not = PRUNE_OUR_LINK
+                    node.edges[v] = PRUNED
                 else:
                     prune_or_not = DONT_PRUNE_OUR_LINK
                     ids_already_sent.add(node.id_received[v])
                 # should I yes or should I no ? (ok, easy one)
                 if node.id_received[v] == node.min_id_recv:
-                    node.send_msg([node.my_id, YES, prune_or_not], v)   # noqa
+                    node.send_msg([node.my_id, YES, prune_or_not], v)
                 else:
-                    node.send_msg([node.my_id, NO, prune_or_not], v)    # noqa
+                    node.send_msg([node.my_id, NO, prune_or_not], v)
                     node.edges_to_flip += [v]
+
         else:
             # at least one upcoming vote was no : send no to everyone, the best
             # candidate is not upstream. Enjoy the moment to do some pruning.
-            for v in node.in_edges():
+            for v in in_edges(node):
                 if node.id_received[v] in ids_already_sent:
                     prune_or_not = PRUNE_OUR_LINK
+                    node.edges[v] = PRUNED
                 else:
                     prune_or_not = DONT_PRUNE_OUR_LINK
                 node.send_msg([node.my_id, NO, prune_or_not], v)
@@ -159,18 +149,30 @@ def oy_phase(node):
 # YO-YO UTILS _____________________________________________________________
 
 def active_edges(node):
+    """
+    Returns the list of node's edges which have not been pruned yet
+    """
     return [v for v in node.edges if node.edges[v] != PRUNED]
 
 
 def out_edges(node):
+    """
+    Returns the list of node's out edges
+    """
     return [v for v in active_edges(node) if node.edges[v] == OUT]
 
 
 def in_edges(node):
+    """
+    Returns the list of node's in edges
+    """
     return [v for v in active_edges(node) if node.edges[v] == IN]
 
 
 def flip_edges(node):
+    """
+    Flips the logical orientation of node's edges which are in edges_to_flip
+    """
     for v in node.edges:
         if v in node.edges_to_flip:
             node.edges[v] = "IN" if node.edges[v] == "OUT" else "OUT"
@@ -179,10 +181,17 @@ def flip_edges(node):
 
 
 def is_sink(node):
+    """
+    Returns true iff node is a sink. This method does not check node.role,
+    but actually checks edges to see if the node is currently a sink
+    """
     return not any(node.edges.values() == OUT)
 
 
 def is_leaf(node):
+    """
+    Returns true iff node is a sink with exactly one in edge
+    """
     return (len(in_edges(node)) == 1) and (len(out_edges(node)) == 0)
 
 
@@ -201,6 +210,9 @@ def get_role(node):
 
 
 def print_edges(node):
+    """
+    Utility printing oriented edges
+    """
     for v in node.edges:
         if node.edges[v] == IN:
             print("%s <--- %s" % (node.my_id, v))
