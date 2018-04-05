@@ -14,7 +14,7 @@ def make_ring(node):
     node.ring = make_ring_dfs(node, node.my_id)
     for i in range(len(node.ring)-1):
         print(shortest_path(node.graph, node.ring[i], node.ring[i+1]))
-    print(shortest_path(node.graph, node.ring[0], node.ring[-1]))
+    print(shortest_path(node.graph, node.ring[-1], node.ring[0]))
 
 
 def make_ring_dfs(node, u):

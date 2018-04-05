@@ -2,6 +2,7 @@
 
 import pika
 import json
+import sys
 
 from lib.config import QUEUE_PREFIX, MAIN_PUB, MAIN_PRIV, PUB_Q
 from lib.config import ANSWER, REFLUX, FLUX, YES
@@ -48,6 +49,7 @@ class PikaNode:
         """
         Sends the message msg to 'receiver_id'.
         """
+        print("send %s to %s" % (msg, receiver_id))
         if on_excl_queue:
             queue_name = self.excl_queue[receiver_id]
         else:
@@ -92,13 +94,23 @@ class PikaNode:
         self.declare_neighbors_queues()
 
         # elect a leader
-        self.elect_leader()
+        try:
+            self.elect_leader()
+        except:
+            e = sys.exc_info()[0]
+            print("<p>Error: %s</p>" % e)
+            self.main_loop()
+
         shout(self)
         if self.role == LEADER:
             self.graph = {int(k): self.graph[k] for k in self.graph}
             print(self.graph)
             make_ring(self)
             print(self.ring)
+
+        # enter main loop
+        self.main_loop()
+
 # _________________________________________________________________________
 # _______________________ NETWORK INITIALIZATION __________________________
 
@@ -149,6 +161,17 @@ class PikaNode:
         self.is_leader = yo_yo(self)
         print("I am%s the leader" % ("" if self.role == LEADER else " not"))
 
+
+# _____________________________________________________________________________
+# _______________________ MAIN LOOP ___________________________________________
+
+    def main_loop(self):
+        in_main_loop = True
+        while in_main_loop:
+            user_in = raw_input(">")
+            if user_in == "/q":
+                in_main_loop = False
+                print("bye")
 # _____________________________________________________________________________
 # _______________________ CALLBACKS ___________________________________________
 
@@ -183,6 +206,7 @@ class PikaNode:
         self.channel.basic_ack(method_frame.delivery_tag)
         # process answer and stop consuming
         sender, packet = json.loads(body)
+        print("recv %s from %s" % (packet, sender))
         self.id_received[sender] = packet
         self.channel.stop_consuming()
 
@@ -195,6 +219,7 @@ class PikaNode:
         self.channel.basic_ack(method_frame.delivery_tag)
         # process answer and stop consuming
         sender, packet, prune_or_not = json.loads(body)
+        print("recv %s, %s from %s" % (packet, prune_or_not, sender))
         if packet == NO:
             self.edges_to_flip += [sender]
         self.yes_no_received[sender] = packet
