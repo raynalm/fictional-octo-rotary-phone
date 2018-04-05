@@ -48,7 +48,7 @@ def gen_graph(n, s):
             edges[u].add(v)
             edges[v].add(u)
             to_add -= 1
-    to_graphviz(edges)
+    # to_graphviz(edges)
     return edges
 
 
