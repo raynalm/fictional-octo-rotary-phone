@@ -1,23 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-
-# YO-YO ALGORITHM MACROS ______________________________________________________
-# edges
-IN = "IN"
-OUT = "OUT"
-PRUNED = "PRUNED"
-# roles
-SOURCE = "SOURCE"
-INTERMEDIATE = "INTERMEDIATE"
-SINK = "SINK"
-LEADER = "LEADER"
-# upstream answers
-YES = "YES"
-NO = "NO"
-# pruning request
-PRUNE_OUR_LINK = "PRUNE"
-DONT_PRUNE_OUR_LINK = "NO_PRUNE"
+from lib.config import YES, NO, SOURCE, SINK, LEADER, PRUNED, IN, OUT
+from lib.config import INTERMEDIATE, PRUNE_OUR_LINK, DONT_PRUNE_OUR_LINK
 
 
 # _____________________________________________________________________________
@@ -83,7 +68,7 @@ def oy_phase(node):
     """
     -YO phase of the YO-YO algorithm
     """
-    print("[%s] start yo, role is %s" % (node.my_id, node.role))
+    print("[%s] start oy, role is %s" % (node.my_id, node.role))
     node.yes_no_received = dict()
     node.edges_to_flip = []
     ids_already_sent = set()
@@ -130,21 +115,24 @@ def oy_phase(node):
                 # determine if link should be pruned or not
                 if node.id_received[v] in ids_already_sent:
                     prune_or_not = PRUNE_OUR_LINK
+                    node.edges[v] = PRUNED
                 else:
                     prune_or_not = DONT_PRUNE_OUR_LINK
                     ids_already_sent.add(node.id_received[v])
                 # should I yes or should I no ? (ok, easy one)
                 if node.id_received[v] == node.min_id_recv:
-                    node.send_msg([node.my_id, YES, prune_or_not], v)   # noqa
+                    node.send_msg([node.my_id, YES, prune_or_not], v)
                 else:
-                    node.send_msg([node.my_id, NO, prune_or_not], v)    # noqa
+                    node.send_msg([node.my_id, NO, prune_or_not], v)
                     node.edges_to_flip += [v]
+
         else:
             # at least one upcoming vote was no : send no to everyone, the best
             # candidate is not upstream. Enjoy the moment to do some pruning.
-            for v in node.in_edges():
+            for v in in_edges(node):
                 if node.id_received[v] in ids_already_sent:
                     prune_or_not = PRUNE_OUR_LINK
+                    node.edges[v] = PRUNED
                 else:
                     prune_or_not = DONT_PRUNE_OUR_LINK
                 node.send_msg([node.my_id, NO, prune_or_not], v)
