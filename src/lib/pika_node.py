@@ -204,6 +204,11 @@ class PikaNode:
         self.channel.stop_consuming()
 
     def shout_callback(self, ch, method_frame, properties, body):
+        """
+        shout protocol specific callback. Depending on th type of message
+        (ANSWER, FLUW OR REFLUX), adapts its behavior.
+        shout protocol allows to send all graph informations to the leader
+        """
         # ack
         self.channel.basic_ack(method_frame.delivery_tag)
         # process message
@@ -240,3 +245,10 @@ class PikaNode:
                     [REFLUX, self.my_id, self.reflux], self.where_to_reflux
                 )
             self.channel.stop_consuming()
+
+
+    def generic_callback(self, ch, method_frame, properties, body):
+        """
+        receives a message. Depending on the message type, dispatch towards
+        the adapted callback.
+        """

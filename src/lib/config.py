@@ -42,3 +42,5 @@ REFLUX = "REFLUX"
 # RING ALGORITHM MACROS _______________________________________________________
 WHITE = "WHITE"
 BLACK = "BLACK"
+RIGHT = "RIGHT"
+LEFT = "LEFT"
