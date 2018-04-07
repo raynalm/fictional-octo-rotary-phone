@@ -9,7 +9,7 @@ def shout(node):
         node.shout_answer = NO
         node.wait_answer_from = [e for e in node.neighbors_ids]
         for v in node.neighbors_ids:
-            node.send_msg([FLUX, node.my_id, None], v, True)
+            node.send_msg([FLUX, node.my_id, None], v)
         node.recv_msg(node.shout_callback)
         node.graph = dict(node.reflux)
     else:

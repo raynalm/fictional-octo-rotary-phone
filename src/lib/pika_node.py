@@ -4,8 +4,8 @@ import pika
 import json
 import sys
 
-from lib.config import QUEUE_PREFIX, MAIN_PUB, MAIN_PRIV, PUB_Q
-from lib.config import ANSWER, REFLUX, FLUX, YES
+from lib.config import QUEUE_PREFIX, MAIN_Q, MAIN_LAUNCHER
+from lib.config import ANSWER, REFLUX, FLUX, YES, ID, NEIGHBORS
 from lib.config import NO, PRUNE_OUR_LINK, PRUNED, LEADER
 from lib.yo_yo import yo_yo
 from lib.shout import shout
@@ -20,14 +20,14 @@ from lib.make_ring import make_ring
 class PikaNode:
     def __init__(self, my_id):
         """
+        Class constructor.
         Args:
             my_id: int, the identifier of the node
         """
         self.my_id = my_id
-        self.in_queue = {MAIN_PUB: PUB_Q, MAIN_PRIV: PUB_Q+str(my_id)}
-        self.out_queue = {MAIN_PUB: PUB_Q, MAIN_PRIV: PUB_Q+str(my_id)}
+        self.out_queue = {MAIN_LAUNCHER: MAIN_Q}
+        self.in_queue = QUEUE_PREFIX + str(self.my_id) + "__main_q"
         self.excl_queue = dict()
-        self.init_connection()
 
 # _________________________________________________________________________
 # _______________________ INIT CONNECTION _________________________________
@@ -43,49 +43,15 @@ class PikaNode:
         print("Connection initialized")
 
 # _________________________________________________________________________
-# _______________________ SEND MESSAGE ____________________________________
-
-    def send_msg(self, msg, receiver_id, on_excl_queue=False):
-        """
-        Sends the message msg to 'receiver_id'.
-        """
-        print("send %s to %s" % (msg, receiver_id))
-        if on_excl_queue:
-            queue_name = self.excl_queue[receiver_id]
-        else:
-            queue_name = self.out_queue[receiver_id]
-        self.channel.basic_publish(
-            exchange='',
-            routing_key=queue_name,
-            body=json.dumps(msg)
-        )
-
-
-# _________________________________________________________________________
-# _______________________ RECEIVE MESSAGE _________________________________
-
-    def recv_msg(self, callback, sender_id=None):
-        """
-        Consumes a message sent by 'sender_id' by calling 'callback'
-        """
-        if sender_id is None:
-            queue_name = self.excl_queue[self.my_id]
-        else:
-            queue_name = self.in_queue[sender_id]
-        self.channel.basic_consume(
-            callback,
-            queue=queue_name,
-            no_ack=False
-        )
-        self.channel.start_consuming()
-
-# _________________________________________________________________________
 # _______________________ LAUNCH NODE _____________________________________
 
     def launch(self):
         """
         Main method. Sets up the network, launches yoyo algorithm, etc ....
         """
+        # initialize connection
+        self.init_connection()
+
         # send id to main launcher, and modify in case it is used
         self.declare_to_main_launcher()
 
@@ -96,15 +62,10 @@ class PikaNode:
         # elect a leader
         self.elect_leader()
 
-        # try:
-        #     self.elect_leader()
-        # except:
-        #     e = sys.exc_info()[0]
-        #     print("<p>Error: %s</p>" % e)
-        #     self.main_loop()
-
+        # use shout protocol so the leader can gather all the graph's info
         shout(self)
         if self.role == LEADER:
+            # leader creates a virtual ring, and sends routing to others
             self.graph = {int(k): self.graph[k] for k in self.graph}
             print(self.graph)
             make_ring(self)
@@ -113,46 +74,66 @@ class PikaNode:
         # enter main loop
         self.main_loop()
 
+
+# _________________________________________________________________________
+# _______________________ SEND MESSAGE ____________________________________
+
+    def send_msg(self, msg, receiver_id):
+        """
+        Sends the message msg to 'receiver_id'.
+        """
+        print("send %s to %s" % (msg, receiver_id))
+        queue_name = self.out_queue[receiver_id]
+        self.channel.basic_publish(
+            exchange='',
+            routing_key=queue_name,
+            body=json.dumps(msg)
+        )
+
+
+# _________________________________________________________________________
+# _______________________ RECEIVE MESSAGE _________________________________
+
+    def recv_msg(self, callback):
+        """
+        Starts consuming messages on own queue using 'callback'
+        """
+        self.channel.basic_consume(
+            callback,
+            queue=self.in_queue,
+            no_ack=False
+        )
+        self.channel.start_consuming()
+
 # _________________________________________________________________________
 # _______________________ NETWORK INITIALIZATION __________________________
 
     def declare_to_main_launcher(self):
         """
         Declare queues to communicate with the main launcher
-        Sends my_id to the main launcher, receive it back (eventually modified)
+        Sends my_id to the main launcher
         """
-        self.channel.queue_declare(queue=self.in_queue[MAIN_PUB])
-        self.channel.queue_declare(queue=self.in_queue[MAIN_PRIV])
+        self.channel.queue_declare(queue=self.out_queue[MAIN_LAUNCHER])
+        self.channel.queue_declare(queue=self.in_queue)
 
         # send id to main launcher
-        self.send_msg(self.my_id, MAIN_PUB)
-
-        # get an answer from main launcher
-        self.recv_msg(self.init_callback, MAIN_PRIV)
+        self.send_msg(self.my_id, MAIN_LAUNCHER)
 
     def receive_neighbors_ids(self):
         """
         Receives ids from one's neighbors in the network.
         """
-        self.recv_msg(self.store_neighbors_callback, MAIN_PRIV)
+        self.recv_msg(self.init_network_callback)
 
     def declare_neighbors_queues(self):
         """
         Declares all the queues needed to communicate with the neighbors
         """
         for v in self.neighbors_ids:
-            # declare in_queues
-            sstr = QUEUE_PREFIX + str(v) + "->" + str(self.my_id)
-            self.channel.queue_declare(queue=sstr)
-            self.in_queue[v] = sstr
-            # declare out_queues
-            sstr = QUEUE_PREFIX + str(self.my_id) + "->" + str(v)
-            self.channel.queue_declare(queue=sstr)
-            self.out_queue[v] = sstr
-            # declare excl_queue
-            sstr = QUEUE_PREFIX + str(v) + "__"
-            self.channel.queue_declare(queue=sstr)
-            self.excl_queue[v] = sstr
+            q_name = QUEUE_PREFIX + str(v) + "__"
+            self.channel.queue_declare(queue=q_name)
+            self.out_queue[v] = q_name
+
 # _________________________________________________________________________
 # _______________________ YO-YO ALGORITHM _________________________________
 
@@ -177,27 +158,17 @@ class PikaNode:
 # _____________________________________________________________________________
 # _______________________ CALLBACKS ___________________________________________
 
-    def init_callback(self, ch, method_frame, properties, body):
+    def init_network_callback(self, ch, method, properties, body):
         """
-        Callback for consuming main launcher answer. Can reset my_id
-        """
-        # ack
-        self.channel.basic_ack(method_frame.delivery_tag)
-        # process answer and stop consuming
-        if self.my_id != json.loads(body):
-            # if my_id was modified
-            self.my_id = json.loads(body)
-            self.in_queue[MAIN_PRIV] = PUB_Q+str(self.my_id)
-        self.excl_queue[self.my_id] = QUEUE_PREFIX + str(self.my_id) + "__"
-        self.channel.queue_declare(self.in_queue[MAIN_PRIV])
-        self.channel.stop_consuming()
-
-    def store_neighbors_callback(self, ch, method, properties, body):
-        """
-        Callback for consuming main launcher message. Stores neighbors' ids
+        Callback for consuming main launcher answer.
+        Stores neighbors' ids, and eventually modifies my_id
         """
         self.channel.basic_ack(method.delivery_tag)
-        self.neighbors_ids = json.loads(body)
+        msg = json.loads(body)
+        print(msg)
+        self.my_id = msg[ID]
+        self.in_queue = QUEUE_PREFIX + str(self.my_id) + "__"
+        self.neighbors_ids = msg[NEIGHBORS]
         self.channel.stop_consuming()
 
     def yoyo_recv_id_callback(self, ch, method_frame, properties, body):
@@ -207,6 +178,7 @@ class PikaNode:
         # ack
         self.channel.basic_ack(method_frame.delivery_tag)
         # process answer and stop consuming
+        print("yoyo -> recv %s" % json.loads(body))
         sender, packet = json.loads(body)
         print("recv %s from %s" % (packet, sender))
         self.id_received[sender] = packet
@@ -220,7 +192,7 @@ class PikaNode:
         # ack
         self.channel.basic_ack(method_frame.delivery_tag)
         # process answer and stop consuming
-        print(body)
+        print("oyoy -> recv %s" % json.loads(body))
         sender, packet, prune_or_not = json.loads(body)
         print("recv %s, %s from %s" % (packet, prune_or_not, sender))
         if packet == NO:
@@ -231,19 +203,17 @@ class PikaNode:
         self.channel.stop_consuming()
 
     def shout_callback(self, ch, method_frame, properties, body):
-        """
-
-        """
         # ack
         self.channel.basic_ack(method_frame.delivery_tag)
         # process message
         p_type, sender, packet = json.loads(body)
+
         # answer : if yes, wait for reflux ; if no, wait for nothing more
         if p_type == ANSWER:
             if packet == NO:
                 self.wait_answer_from.remove(sender)
-        # flux
 
+        # flux
         elif p_type == FLUX: # TODO -> case where only one neighbor or case where all say no # noqa
             if self.shout_answer == YES:  # if first FLUX recv
                 self.where_to_reflux = sender
@@ -251,11 +221,11 @@ class PikaNode:
                 for v in self.neighbors_ids:
                     if v != sender:
                         self.wait_answer_from += [v]
-                        self.send_msg([FLUX, self.my_id, None], v, True)
+                        self.send_msg([FLUX, self.my_id, None], v)
                     else:
-                        self.send_msg([ANSWER, self.my_id, YES], v, True)
+                        self.send_msg([ANSWER, self.my_id, YES], v)
             else:  # not first FLUX recv
-                self.send_msg([ANSWER, self.my_id, NO], sender, True)
+                self.send_msg([ANSWER, self.my_id, NO], sender)
 
         # reflux
         elif p_type == REFLUX:
@@ -266,8 +236,6 @@ class PikaNode:
         if not self.wait_answer_from:
             if self.role != LEADER:
                 self.send_msg(
-                    [REFLUX, self.my_id, self.reflux],
-                    self.where_to_reflux,
-                    True
+                    [REFLUX, self.my_id, self.reflux], self.where_to_reflux
                 )
             self.channel.stop_consuming()

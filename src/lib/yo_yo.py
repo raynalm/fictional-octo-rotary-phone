@@ -56,7 +56,7 @@ def yo_phase(node):
     node.id_received = {None: node.my_id}
     print("in_edges : %s" % (in_edges(node)))
     for v in in_edges(node):
-        node.recv_msg(node.yoyo_recv_id_callback, v)
+        node.recv_msg(node.yoyo_recv_id_callback)
     print("here")
     # send smaller id received (or my_id if node is source) on out edges
     node.min_id_recv = min(node.id_received.values())
@@ -103,7 +103,7 @@ def oy_phase(node):
         # gather answers from all out edges
         for v in out_edges(node):
             print("waiting for answer from %s" % v)
-            node.recv_msg(node.oy_oy_callback, v)
+            node.recv_msg(node.oy_oy_callback)
 
         # node could have become a leaf after receiving answers
         if is_leaf(node):
@@ -153,7 +153,7 @@ def oy_phase(node):
     else:  # node.role == SOURCE
         # gather answers from all out_edges
         for v in out_edges(node):
-            node.recv_msg(node.oy_oy_callback, v)
+            node.recv_msg(node.oy_oy_callback)
 
     flip_edges(node)
 

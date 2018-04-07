@@ -6,8 +6,8 @@ import pika
 import json
 import random
 
-from lib.config import PUB_Q, RANDOM_START, RANDOM_END
-from lib.config import DEFAULT_MATRIX_SIZE
+from lib.config import MAIN_Q, QUEUE_PREFIX, RANDOM_START, RANDOM_END
+from lib.config import DEFAULT_MATRIX_SIZE, ID, NEIGHBORS
 from lib.graph_gen import gen_graph
 
 
@@ -37,18 +37,20 @@ class MainLauncher:
         self.init_connection()
 
         # start a beautiful narrative with the user
-        print("you can now run all nodes in new terminals by typing: "
+        print("You can now run all nodes in new terminals by typing: "
               "./python run_node.\n You need to launch %s nodes in order "
               "to start the network." % self.nb_nodes)
 
         # collect the id from all nodes in the network
         print("Starting to collect nodes ids ....")
         self.collect_nodes_id()
-        print("done.")
+        print("Done.")
 
+        # send to each node the list of its neighbors ids
         print("Sending to each node information about their neighbors ..")
-        # send to each node the list of its neighbors
         self.send_neighbors()
+        print("Done.")
+
         # job done, exiting
         self.exit_program()
 
@@ -57,7 +59,7 @@ class MainLauncher:
 
     def init_connection(self):
         """
-        Initializes Rabbitmq connection and creates a channel to receives
+        Initializes Rabbitmq connection and creates a channel to receive
         the ids from the PikaNodes
         """
         # init pika connection and channel
@@ -65,14 +67,14 @@ class MainLauncher:
             pika.ConnectionParameters(host='localhost')
         )
         self.channel = self.connection.channel()
-        self.channel.queue_delete(queue=PUB_Q)
-        self.channel.queue_declare(queue=PUB_Q)
+        self.channel.queue_delete(queue=MAIN_Q)
+        self.channel.queue_declare(queue=MAIN_Q)
         self.channel.confirm_delivery()
 
 # _________________________________________________________________________
 # _______________________ SEND MSG ________________________________________
 
-    def send_msg(self, msg, queue_name=PUB_Q):
+    def send_msg(self, msg, queue_name):
         """
         Sends a message on a queue
         Args:
@@ -98,27 +100,25 @@ class MainLauncher:
         """
         Collects the identifiers from all nodes on the network
         """
-        for method_f, pr, body in self.channel.consume(PUB_Q):
+        for method_f, pr, body in self.channel.consume(MAIN_Q):
             # ack
             self.channel.basic_ack(method_f.delivery_tag)
 
-            # reply
-            node_id = json.loads(body)
-            send_queue = PUB_Q+str(node_id)
+            # check if id already here, replace if needed
+            node_id = new_node_id = json.loads(body)
             if node_id in self.nodes_id:
-                node_id = self.choose_new_id()
-            self.channel.queue_declare(send_queue)
-            self.send_msg(json.dumps(node_id), send_queue)
+                new_node_id = self.choose_new_id()
 
             # store
-            self.nodes_id += [node_id]
+            self.nodes_id += [(node_id, new_node_id)]
+
+            # exit loop once enough ids have been collected
             if len(self.nodes_id) == self.nb_nodes:
                 break
 
     def choose_new_id(self):
         """
         Generates a random number which is not in self.nodes_id list
-        already
         """
         rng = random.SystemRandom()
         new_id = rng.randrange(RANDOM_START, RANDOM_END)
@@ -134,13 +134,16 @@ class MainLauncher:
         Sends to each PikaNode in the network the list of its neighbors' id
         """
         for i, v in enumerate(self.nodes_id):
+            node_id, new_node_id = v
             # get the list of neighbors' ids
-            neighbors = [self.nodes_id[j] for j in self.adjacencies[i]]
+            neighbors = [self.nodes_id[j][1] for j in self.adjacencies[i]]
 
-            # create a dedicated queue and send the list
-            send_queue = PUB_Q+str(v)
-            self.channel.queue_declare(PUB_Q+str(v))
-            self.send_msg(json.dumps(neighbors), send_queue)
+            # create a dedicated queue
+            send_queue = QUEUE_PREFIX + str(node_id) + "__main_q"
+            self.channel.queue_declare(send_queue)
+
+            msg = {ID: new_node_id, NEIGHBORS: neighbors}
+            self.send_msg(json.dumps(msg), send_queue)
 
 # _________________________________________________________________________
 # _______________________ EXIT PROGRAM ____________________________________
