@@ -1,23 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-
-
-# contains all constants
-PRINT_DEBUG = False
+"""
+This file contains all constants, along with configuration variables
+"""
 
 RANDOM_START = 8
 RANDOM_END = 1000
 DEFAULT_MATRIX_SIZE = 3
-DEFAULT_SPARSENESS = 0.3
-MSG_ID_OK = "message id is ok"
+DEFAULT_SPARSENESS = 0.35
 
-MAIN_PUB = "main_pub"
-MAIN_PRIV = "main_priv"
-PUB_Q = "q_pub_"
-QUEUE_PREFIX = "q_pr_"
+MAIN_LAUNCHER = "main_launcher"
+MAIN_Q = "pika_main_launcher_q"
+QUEUE_PREFIX = "pika_q_pr_"
+ID = "ID"
+NEIGHBORS = "NEIGHBORS"
 
-USE_YO_YO = True
 
 # YO-YO ALGORITHM MACROS ______________________________________________________
 # edges

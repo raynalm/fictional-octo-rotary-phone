@@ -11,11 +11,11 @@ def make_ring(node):
     for n in node.graph:
         colors[n] = WHITE
     colors[node.my_id] = BLACK
-    node.ring = make_ring_dfs(node, node.my_id)
-    for i in range(len(node.ring)-1):
-        print(shortest_path(node.graph, node.ring[i], node.ring[i+1]))
-    print(shortest_path(node.graph, node.ring[0], node.ring[-1]))
-
+    ring = make_ring_dfs(node, node.my_id)
+    node.ring = [
+        shortest_path(node.graph, ring[i], ring[i+1]) for i in range(len(ring)-1)
+    ] + [shortest_path(node.graph, ring[-1], ring[0])]
+    print(node.ring)
 
 def make_ring_dfs(node, u):
     result = [u]
