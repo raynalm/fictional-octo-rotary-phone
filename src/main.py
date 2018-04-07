@@ -23,7 +23,6 @@ class MainLauncher:
             s: int, the number of edges in the network
         """
         self.nb_nodes = n
-        print("%s, %s" % (n, s))
         self.adjacencies = gen_graph(n, s)
         self.nodes_id = []
 
@@ -42,10 +41,10 @@ class MainLauncher:
               "./python run_node.\n You need to launch %s nodes in order "
               "to start the network." % self.nb_nodes)
 
-        print("Starting to collect nodes ids ....")
         # collect the id from all nodes in the network
+        print("Starting to collect nodes ids ....")
         self.collect_nodes_id()
-        print("done")
+        print("done.")
 
         print("Sending to each node information about their neighbors ..")
         # send to each node the list of its neighbors

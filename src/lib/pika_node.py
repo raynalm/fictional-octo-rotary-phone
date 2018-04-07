@@ -94,12 +94,14 @@ class PikaNode:
         self.declare_neighbors_queues()
 
         # elect a leader
-        try:
-            self.elect_leader()
-        except:
-            e = sys.exc_info()[0]
-            print("<p>Error: %s</p>" % e)
-            self.main_loop()
+        self.elect_leader()
+
+        # try:
+        #     self.elect_leader()
+        # except:
+        #     e = sys.exc_info()[0]
+        #     print("<p>Error: %s</p>" % e)
+        #     self.main_loop()
 
         shout(self)
         if self.role == LEADER:
@@ -218,6 +220,7 @@ class PikaNode:
         # ack
         self.channel.basic_ack(method_frame.delivery_tag)
         # process answer and stop consuming
+        print(body)
         sender, packet, prune_or_not = json.loads(body)
         print("recv %s, %s from %s" % (packet, prune_or_not, sender))
         if packet == NO:

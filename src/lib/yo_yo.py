@@ -51,6 +51,7 @@ def yo_phase(node):
     YO- phase of the YO-YO algorithm
     """
     print("[%s] start yo, role is %s" % (node.my_id, node.role))
+    print_edges(node)
     # gather ids from in edges (and include my_id for sources)
     node.id_received = {None: node.my_id}
     print("in_edges : %s" % (in_edges(node)))
@@ -69,6 +70,7 @@ def oy_phase(node):
     -YO phase of the YO-YO algorithm
     """
     print("[%s] start oy, role is %s" % (node.my_id, node.role))
+    print_edges(node)
     node.yes_no_received = dict()
     node.edges_to_flip = []
     ids_already_sent = set()
@@ -77,13 +79,16 @@ def oy_phase(node):
         for v in in_edges(node):
             # determine if link should be pruned or not
             if is_leaf(node):
+                print("i am a leaf, i send prune to go out")
                 prune_or_not = PRUNE_OUR_LINK
                 node.role = PRUNED
                 node.edges[v] = PRUNED
             elif node.id_received[v] in ids_already_sent:
+                print("%s is redundant, i prune him" % v)
                 prune_or_not = PRUNE_OUR_LINK
                 node.edges[v] = PRUNED
             else:
+                print("%s is useful, no prune" % v)
                 prune_or_not = DONT_PRUNE_OUR_LINK
                 ids_already_sent.add(node.id_received[v])
 
@@ -97,26 +102,32 @@ def oy_phase(node):
     elif node.role == INTERMEDIATE:
         # gather answers from all out edges
         for v in out_edges(node):
+            print("waiting for answer from %s" % v)
             node.recv_msg(node.oy_oy_callback, v)
 
         # node could have become a leaf after receiving answers
         if is_leaf(node):
+            print("i became leaf, i go out")
             prune_or_not = PRUNE_OUR_LINK
             node.role = PRUNED
             for v in in_edges(node):
+                print("say to %s to prune" % v)
                 node.send_msg([node.my_id, YES, prune_or_not], v)
                 node.edges[v] = PRUNED
 
         # if all votes are YES
         if all([b == YES for b in node.yes_no_received.values()]):
+            print("all votes were yes")
             # send YES to those who sent smallest id, NO to others
             # prune all but one of those who sent a particular id
             for v in in_edges(node):
                 # determine if link should be pruned or not
                 if node.id_received[v] in ids_already_sent:
+                    print("%s not useful, i prune the link" % v)
                     prune_or_not = PRUNE_OUR_LINK
                     node.edges[v] = PRUNED
                 else:
+                    print("%s useful, no prune the link" % v)
                     prune_or_not = DONT_PRUNE_OUR_LINK
                     ids_already_sent.add(node.id_received[v])
                 # should I yes or should I no ? (ok, easy one)
@@ -127,6 +138,7 @@ def oy_phase(node):
                     node.edges_to_flip += [v]
 
         else:
+            print("at least one no recv")
             # at least one upcoming vote was no : send no to everyone, the best
             # candidate is not upstream. Enjoy the moment to do some pruning.
             for v in in_edges(node):
@@ -174,8 +186,10 @@ def flip_edges(node):
     Flips the logical orientation of node's edges which are in edges_to_flip
     """
     for v in node.edges:
-        if v in node.edges_to_flip:
-            node.edges[v] = "IN" if node.edges[v] == "OUT" else "OUT"
+        if v in node.edges_to_flip and node.edges[v] == IN:
+            node.edges[v] = OUT
+        elif v in node.edges_to_flip and node.edges[v] == OUT:
+            node.edges[v] = IN
     # flipping the edges can modify one's role. reaffect
     get_role(node)
 
@@ -211,7 +225,7 @@ def get_role(node):
 
 def print_edges(node):
     """
-    Utility printing oriented edges
+    Utility printing oriented edges for debugging purposes
     """
     for v in node.edges:
         if node.edges[v] == IN:
