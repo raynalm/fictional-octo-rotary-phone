@@ -168,6 +168,7 @@ class PikaNode:
         print(msg)
         self.my_id = msg[ID]
         self.in_queue = QUEUE_PREFIX + str(self.my_id) + "__"
+        self.channel.queue_declare(self.in_queue)
         self.neighbors_ids = msg[NEIGHBORS]
         self.channel.stop_consuming()
 
