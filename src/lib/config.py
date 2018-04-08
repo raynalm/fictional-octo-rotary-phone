@@ -34,11 +34,15 @@ NO = "NO"
 PRUNE_OUR_LINK = "PRUNE"
 DONT_PRUNE_OUR_LINK = "NO_PRUNE"
 
+
 # SHOUT ALGORITHM MACROS ______________________________________________________
 ANSWER = "ANSWER"
 FLUX = "FLUX"
 REFLUX = "REFLUX"
 
+
 # RING ALGORITHM MACROS _______________________________________________________
 WHITE = "WHITE"
 BLACK = "BLACK"
+RIGHT = "RIGHT"
+LEFT = "LEFT"

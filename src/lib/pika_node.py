@@ -2,7 +2,7 @@
 
 import pika
 import json
-import sys
+# import sys
 
 from lib.config import QUEUE_PREFIX, MAIN_Q, MAIN_LAUNCHER
 from lib.config import ANSWER, REFLUX, FLUX, YES, ID, NEIGHBORS
@@ -27,7 +27,6 @@ class PikaNode:
         self.my_id = my_id
         self.out_queue = {MAIN_LAUNCHER: MAIN_Q}
         self.in_queue = QUEUE_PREFIX + str(self.my_id) + "__main_q"
-        self.excl_queue = dict()
 
 # _________________________________________________________________________
 # _______________________ INIT CONNECTION _________________________________
@@ -64,12 +63,19 @@ class PikaNode:
 
         # use shout protocol so the leader can gather all the graph's info
         shout(self)
+
+        # leader creates a virtual ring, and sends routing infos to others
         if self.role == LEADER:
-            # leader creates a virtual ring, and sends routing to others
             self.graph = {int(k): self.graph[k] for k in self.graph}
-            print(self.graph)
             make_ring(self)
-            print(self.ring)
+        else:
+            self.ring_received = False
+
+        # get the virtual ring created by the leader
+        self.recv_msg(self.broadcast_callback)
+
+        print(self.route_left)
+        print(self.route_right)
 
         # enter main loop
         self.main_loop()
@@ -82,7 +88,6 @@ class PikaNode:
         """
         Sends the message msg to 'receiver_id'.
         """
-        print("send %s to %s" % (msg, receiver_id))
         queue_name = self.out_queue[receiver_id]
         self.channel.basic_publish(
             exchange='',
@@ -155,6 +160,8 @@ class PikaNode:
             if user_in == "/q":
                 in_main_loop = False
                 print("bye")
+        self.exit_program()
+
 # _____________________________________________________________________________
 # _______________________ CALLBACKS ___________________________________________
 
@@ -165,11 +172,12 @@ class PikaNode:
         """
         self.channel.basic_ack(method.delivery_tag)
         msg = json.loads(body)
-        print(msg)
         self.my_id = msg[ID]
+        print("ID : %s" % self.my_id)
         self.in_queue = QUEUE_PREFIX + str(self.my_id) + "__"
         self.channel.queue_declare(self.in_queue)
         self.neighbors_ids = msg[NEIGHBORS]
+        print("NEIGHBORS : %s" % self.neighbors_ids)
         self.channel.stop_consuming()
 
     def yoyo_recv_id_callback(self, ch, method_frame, properties, body):
@@ -179,9 +187,7 @@ class PikaNode:
         # ack
         self.channel.basic_ack(method_frame.delivery_tag)
         # process answer and stop consuming
-        print("yoyo -> recv %s" % json.loads(body))
         sender, packet = json.loads(body)
-        print("recv %s from %s" % (packet, sender))
         self.id_received[sender] = packet
         self.channel.stop_consuming()
 
@@ -193,9 +199,7 @@ class PikaNode:
         # ack
         self.channel.basic_ack(method_frame.delivery_tag)
         # process answer and stop consuming
-        print("oyoy -> recv %s" % json.loads(body))
         sender, packet, prune_or_not = json.loads(body)
-        print("recv %s, %s from %s" % (packet, prune_or_not, sender))
         if packet == NO:
             self.edges_to_flip += [sender]
         self.yes_no_received[sender] = packet
@@ -204,6 +208,11 @@ class PikaNode:
         self.channel.stop_consuming()
 
     def shout_callback(self, ch, method_frame, properties, body):
+        """
+        shout protocol specific callback. Depending on th type of message
+        (ANSWER, FLUW OR REFLUX), adapts its behavior.
+        shout protocol allows to send all graph informations to the leader
+        """
         # ack
         self.channel.basic_ack(method_frame.delivery_tag)
         # process message
@@ -240,3 +249,30 @@ class PikaNode:
                     [REFLUX, self.my_id, self.reflux], self.where_to_reflux
                 )
             self.channel.stop_consuming()
+
+    def broadcast_callback(self, ch, method_frame, properties, body):
+        """
+        Callback used to broadcast the virtual ring around the nodes
+        """
+        if not self.ring_received:
+            ring = json.loads(body)
+            # get own right and left routes
+            self.route_right = [l for l in ring if l[0] == self.my_id][0][1:]
+            self.route_left = [l[::-1] for l in ring if l[-1] == self.my_id][0][1:]  # noqa: E501
+            # spread info to neighbors
+            for v in self.neighbors_ids:
+                self.send_msg(ring, v)
+            self.nb_broadcast_msg_recv = 1
+            self.ring_received = True
+        else:
+
+            self.nb_broadcast_msg_recv += 1
+            if self.nb_broadcast_msg_recv == len(self.neighbors_ids):
+                self.channel.stop_consuming()
+
+# _____________________________________________________________________________
+# _______________________ EXIT PROGRAM ________________________________________
+
+    def exit_program(self):
+        self.channel.queue_delete(queue=self.in_queue)
+        self.connection.close()
