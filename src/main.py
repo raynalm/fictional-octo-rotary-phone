@@ -25,7 +25,7 @@ class MainLauncher:
         self.nb_nodes = n
         self.adjacencies = gen_graph(n, s)
         self.nodes_id = []
-
+        self.id_stored = []
 # _________________________________________________________________________
 # _______________________ LAUNCH NETWORK___________________________________
 
@@ -106,10 +106,11 @@ class MainLauncher:
 
             # check if id already here, replace if needed
             node_id = new_node_id = json.loads(body)
-            if node_id in self.nodes_id:
+            if node_id in self.id_stored:
                 new_node_id = self.choose_new_id()
 
             # store
+            self.id_stored += [new_node_id]
             self.nodes_id += [(node_id, new_node_id)]
 
             # exit loop once enough ids have been collected
@@ -122,7 +123,7 @@ class MainLauncher:
         """
         rng = random.SystemRandom()
         new_id = rng.randrange(RANDOM_START, RANDOM_END)
-        while new_id in self.nodes_id:
+        while new_id in self.id_stored:
             new_id = rng.randrange(RANDOM_START, RANDOM_END)
         return new_id
 
@@ -153,6 +154,7 @@ class MainLauncher:
         Close the connection and exits
         """
         print("Exiting")
+        self.channel.queue_delete(queue=MAIN_Q)
         self.connection.close()
         sys.exit()
 
