@@ -15,7 +15,20 @@ MAIN_Q = "pika_main_launcher_q"
 QUEUE_PREFIX = "pika_q_pr_"
 ID = "ID"
 NEIGHBORS = "NEIGHBORS"
+SELECT_TIMEOUT = 0.2
 
+DIRECTION = "DIRECTION"
+ROUTE = "ROUTE"
+RECEIVER = "RECEIVER"
+BODY = "BODY"
+TYPE = "TYPE"
+RING_MSG = "RING_MSG"
+SENDER = "SENDER"
+
+# COMMAND MACROS ______________________________________________________
+QUIT = "/q"
+SEND_MSG = "/s"
+LIST_NODES = "/l"
 
 # YO-YO ALGORITHM MACROS ______________________________________________________
 # edges
