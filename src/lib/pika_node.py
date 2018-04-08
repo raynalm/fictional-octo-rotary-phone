@@ -2,15 +2,19 @@
 
 import pika
 import json
-# import sys
+import sys
+import select
+import time
 
 from lib.config import QUEUE_PREFIX, MAIN_Q, MAIN_LAUNCHER
 from lib.config import ANSWER, REFLUX, FLUX, YES, ID, NEIGHBORS
 from lib.config import NO, PRUNE_OUR_LINK, PRUNED, LEADER
+from lib.config import QUIT, SEND_MSG, LIST_NODES, RIGHT, LEFT, SENDER
+from lib.config import DIRECTION, ROUTE, RECEIVER, BODY, TYPE, RING_MSG
 from lib.yo_yo import yo_yo
 from lib.shout import shout
 from lib.make_ring import make_ring
-
+from lib.utils import console_print
 
 # _________________________________________________________________________
 # _______________________ PIKA NODE CLASS _________________________________
@@ -154,13 +158,83 @@ class PikaNode:
 # _______________________ MAIN LOOP ___________________________________________
 
     def main_loop(self):
-        in_main_loop = True
-        while in_main_loop:
-            user_in = raw_input(">")
-            if user_in == "/q":
-                in_main_loop = False
-                print("bye")
+        self.in_main_loop = True
+        while self.in_main_loop:
+            # check if user issued a command
+            if select.select([sys.stdin], [], [], 0.0)[0]:
+                self.process_cmd()
+            self.get_msg_non_blocking()
+            time.sleep(0.1)
         self.exit_program()
+
+    def process_cmd(self):
+        cmd = raw_input()
+        if cmd == QUIT:
+            self.exit_program()
+        elif cmd.split()[0] == SEND_MSG:
+            self.ring_send_msg(cmd)
+        elif cmd == LIST_NODES:
+            print(
+                "Available nodes : {0}".format(
+                    ', '.join({str(e) for e in self.all_nodes})
+                )
+            )
+
+    def ring_send_msg(self, cmd):
+        cmd_spl = cmd.split()
+        if len(cmd_spl) < 3 or int(cmd_spl[1]) not in self.all_nodes:
+            console_print("Send a message syntax : '%s recv_id msg'\n"
+                          "For instance, '%s 471 hello mister 471"
+                          % (SEND_MSG, SEND_MSG))
+        else:
+            recv_id = cmd_spl[1]
+            if recv_id in self.nodes_left:
+                di = LEFT
+            else:
+                di = RIGHT
+            route = self.route_left if di == LEFT else self.route_right
+            packet = {
+                TYPE: RING_MSG,
+                DIRECTION: di,
+                ROUTE: route[1:],
+                RECEIVER: recv_id,
+                SENDER: self.my_id,
+                BODY: cmd[cmd.index(cmd_spl[2]):]
+            }
+            console_print("sending on ring : %s, %s, %s"
+                          % (packet, route[0], di))
+            self.send_msg(packet, route[0])
+
+    def get_msg_non_blocking(self):
+        m_frame, header_frame, body = self.channel.basic_get(self.in_queue)
+        if m_frame:
+            self.channel.basic_ack(m_frame.delivery_tag)
+            msg = json.loads(body)
+            console_print("got messge : %s" % msg)
+            if msg[ROUTE]:
+                self.route_msg(msg)
+            elif int(msg[RECEIVER]) == self.my_id:
+                self.open_msg(msg)
+            else:
+                if msg[DIRECTION] == LEFT:
+                    msg[ROUTE] = self.route_left[1:]
+                else:
+                    msg[ROUTE] = self.route_right[1:]
+                self.send_msg(msg, self.route_right[0])
+        # else -> no message on the queue
+
+    def route_msg(self, msg):
+        assert(msg[ROUTE] != [])
+        recv_id = int(msg[ROUTE][0])
+        msg[ROUTE] = msg[ROUTE][1:]
+        print("routing %s towards %s" % (msg, recv_id))
+        self.send_msg(msg, recv_id)
+
+    def open_msg(self, msg):
+        if msg[TYPE] == RING_MSG:
+            console_print(
+                "[%s] %s" % (msg[SENDER], msg[BODY])
+            )
 
 # _____________________________________________________________________________
 # _______________________ CALLBACKS ___________________________________________
@@ -256,9 +330,19 @@ class PikaNode:
         """
         if not self.ring_received:
             ring = json.loads(body)
+
             # get own right and left routes
             self.route_right = [l for l in ring if l[0] == self.my_id][0][1:]
             self.route_left = [l[::-1] for l in ring if l[-1] == self.my_id][0][1:]  # noqa: E501
+
+            # get list of all nodes in the network
+            # and split ring in left side and right side
+            self.all_nodes = [l[0] for l in ring]
+            i = self.all_nodes.index(self.my_id)
+            self.all_nodes = self.all_nodes[i:] + self.all_nodes[:i]
+            self.nodes_right = self.all_nodes[:len(self.all_nodes)//2]
+            self.nodes_left = self.all_nodes[len(self.all_nodes)//2:]
+
             # spread info to neighbors
             for v in self.neighbors_ids:
                 self.send_msg(ring, v)
@@ -267,8 +351,8 @@ class PikaNode:
         else:
 
             self.nb_broadcast_msg_recv += 1
-            if self.nb_broadcast_msg_recv == len(self.neighbors_ids):
-                self.channel.stop_consuming()
+        if self.nb_broadcast_msg_recv == len(self.neighbors_ids):
+            self.channel.stop_consuming()
 
 # _____________________________________________________________________________
 # _______________________ EXIT PROGRAM ________________________________________
@@ -276,3 +360,4 @@ class PikaNode:
     def exit_program(self):
         self.channel.queue_delete(queue=self.in_queue)
         self.connection.close()
+        console_print("bye")

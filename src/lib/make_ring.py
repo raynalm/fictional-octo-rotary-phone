@@ -27,9 +27,16 @@ def make_ring(node):
 
     print(ring)
     # get own right and left routes
-    node.route_right = [l for l in ring if l[0] == node.my_id][0][1:]
+    node.route_right = next(l for l in ring if l[0] == node.my_id)[1:]
     node.route_left = [l[::-1] for l in ring if l[-1] == node.my_id][0][1:]
 
+    # get list of all nodes in the network
+    # and split ring in left side and right side
+    node.all_nodes = [l[0] for l in ring]
+    i = node.all_nodes.index(node.my_id)
+    node.all_nodes = node.all_nodes[i:] + node.all_nodes[:i]
+    node.nodes_right = node.all_nodes[:len(node.all_nodes)//2]
+    node.nodes_left = node.all_nodes[len(node.all_nodes)//2:]
 
     # spread the ring informations to all other nodes on the network
     node.ring_received = True
