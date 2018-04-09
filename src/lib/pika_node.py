@@ -95,12 +95,16 @@ class PikaNode:
         Sends the message msg to 'receiver_id'.
         """
         queue_name = self.out_queue[receiver_id]
-        self.channel.basic_publish(
-            exchange='',
-            routing_key=queue_name,
-            body=json.dumps(msg)
-        )
-
+        try:
+            self.channel.basic_publish(
+                exchange='',
+                routing_key=queue_name,
+                body=json.dumps(msg)
+            )
+        except:
+            console_print("Error while attempting to send a message\n"
+                          "Exiting.")
+            self.exit_program()
 
 # _________________________________________________________________________
 # _______________________ RECEIVE MESSAGE _________________________________
@@ -109,13 +113,17 @@ class PikaNode:
         """
         Starts consuming messages on own queue using 'callback'
         """
-        self.channel.basic_consume(
-            callback,
-            queue=self.in_queue,
-            no_ack=False
-        )
-        self.channel.start_consuming()
-
+        try:
+            self.channel.basic_consume(
+                callback,
+                queue=self.in_queue,
+                no_ack=False
+            )
+            self.channel.start_consuming()
+        except:
+            console_print("Error while attempting to receive a message\n"
+                          "Exiting.")
+            self.exit_program()
 # _________________________________________________________________________
 # _______________________ NETWORK INITIALIZATION __________________________
 
@@ -227,21 +235,24 @@ class PikaNode:
             )
 
     def get_msg_non_blocking(self):
-        m_frame, header_frame, body = self.channel.basic_get(self.in_queue)
-        if m_frame:
-            self.channel.basic_ack(m_frame.delivery_tag)
-            msg = json.loads(body)
-            if msg[ROUTE]:
-                self.route_msg(msg)
-            elif int(msg[RECEIVER]) == self.my_id:
-                self.open_msg(msg)
-            else:
-                if msg[DIRECTION] == LEFT:
-                    msg[ROUTE] = self.route_left[1:]
+        try:
+            m_frame, header_frame, body = self.channel.basic_get(self.in_queue)
+            if m_frame:
+                self.channel.basic_ack(m_frame.delivery_tag)
+                msg = json.loads(body)
+                if msg[ROUTE]:
+                    self.route_msg(msg)
+                elif int(msg[RECEIVER]) == self.my_id:
+                    self.open_msg(msg)
                 else:
-                    msg[ROUTE] = self.route_right[1:]
-                self.send_msg(msg, self.route_right[0])
-        # else -> no message on the queue
+                    if msg[DIRECTION] == LEFT:
+                        msg[ROUTE] = self.route_left[1:]
+                    else:
+                        msg[ROUTE] = self.route_right[1:]
+                        self.send_msg(msg, self.route_right[0])
+            # else -> no message on the queue
+        except pika.exceptions.ChannelClosed:
+            self.exit_program()
 
     def route_msg(self, msg):
         assert(msg[ROUTE] != [])
@@ -302,6 +313,7 @@ class PikaNode:
         msg = json.loads(body)
         self.my_id = msg[ID]
         print("ID : %s" % self.my_id)
+        self.to_close_on_exit = self.in_queue
         self.in_queue = QUEUE_PREFIX + str(self.my_id) + "__"
         self.channel.queue_declare(self.in_queue)
         self.neighbors_ids = msg[NEIGHBORS]
@@ -413,6 +425,8 @@ class PikaNode:
 
     def exit_program(self):
         self.channel.queue_delete(queue=self.in_queue)
+        self.channel.queue_delete(self.to_close_on_exit)
         self.channel.close()
         self.connection.close()
         console_print("bye")
+        sys.exit()
