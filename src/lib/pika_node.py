@@ -6,6 +6,9 @@ import sys
 import select
 import time
 import base64
+import Crypto
+from Crypto.PublicKey import RSA
+from Crypto import Random
 
 from lib.config import PIKA_CONNECTION_PARAMETERS
 from lib.config import QUEUE_PREFIX, MAIN_Q, MAIN_LAUNCHER
@@ -15,7 +18,7 @@ from lib.config import QUIT, SEND_MSG, LIST_NODES, RIGHT, LEFT, SENDER
 from lib.config import DIRECTION, ROUTE, RECEIVER, BODY, TYPE, RING_MSG
 from lib.config import RING_FILE, FILENAME, ASK_FILE, HELP
 from lib.config import RING_ASK_FILE, NO_SUCH_FILE
-
+from lib.config import PUB_KEY, HASH, KEYS
 from lib.yo_yo import yo_yo
 from lib.shout import shout
 from lib.make_ring import make_ring
@@ -36,7 +39,10 @@ class PikaNode:
         self.my_id = my_id
         self.out_queue = {MAIN_LAUNCHER: MAIN_Q}
         self.in_queue = QUEUE_PREFIX + str(self.my_id) + "__main_q"
-
+        rng = Random.new().read
+        self.key = RSA.generate(2048, rng)
+        self.pub_key = self.key.publickey()
+        self.keys = dict()
 # _________________________________________________________________________
 # _______________________ INIT CONNECTION _________________________________
 
@@ -136,7 +142,8 @@ class PikaNode:
         self.channel.queue_declare(queue=self.in_queue)
 
         # send id to main launcher
-        self.send_msg(self.my_id, MAIN_LAUNCHER)
+        msg = {ID: self.my_id, PUB_KEY: self.key.publickey().exportKey()}
+        self.send_msg(msg, MAIN_LAUNCHER)
 
     def receive_neighbors_ids(self):
         """
@@ -240,7 +247,6 @@ class PikaNode:
             SENDER: self.my_id,
             FILENAME: filename
         }
-        print("sending %s" % packet)
         self.send_msg(packet, route[0])
 
     def ring_send_msg(self, cmd):
@@ -276,7 +282,6 @@ class PikaNode:
         self.send_msg(msg, recv_id)
 
     def open_msg(self, msg):
-        print("opening %s" % msg)
         if msg[TYPE] == RING_MSG:
             console_print(
                 "[%s] %s" % (msg[SENDER], msg[BODY])
@@ -308,7 +313,6 @@ class PikaNode:
                 if filename != NO_SUCH_FILE else None,
                 FILENAME: filename
         }
-        print("sending file %s" % packet)
         self.send_msg(packet, route[0])
 
 # _____________________________________________________________________________
@@ -323,6 +327,7 @@ class PikaNode:
         msg = json.loads(body)
         self.my_id = msg[ID]
         print("ID : %s" % self.my_id)
+        self.all_keys_hash = msg[HASH]
         self.to_close_on_exit = self.in_queue
         self.in_queue = QUEUE_PREFIX + str(self.my_id) + "__"
         self.channel.queue_declare(self.in_queue)
@@ -374,7 +379,7 @@ class PikaNode:
                 self.wait_answer_from.remove(sender)
 
         # flux
-        elif p_type == FLUX: # TODO -> case where only one neighbor or case where all say no # noqa
+        elif p_type == FLUX:
             if self.shout_answer == YES:  # if first FLUX recv
                 self.where_to_reflux = sender
                 self.shout_answer = NO
@@ -389,8 +394,10 @@ class PikaNode:
 
         # reflux
         elif p_type == REFLUX:
-            for k in packet:
-                self.reflux[int(k)] = packet[k]
+            for k in packet[NEIGHBORS]:
+                self.reflux[NEIGHBORS][int(k)] = packet[NEIGHBORS][k]
+            for k in packet[KEYS]:
+                self.reflux[KEYS][int(k)] = packet[KEYS][k]
             self.wait_answer_from.remove(sender)
 
         if not self.wait_answer_from:
@@ -413,7 +420,7 @@ class PikaNode:
 
             # get list of all nodes in the network
             # and split ring in left side and right side
-            self.all_nodes = [l[0] for l in ring]
+            self.all_nodes = [l[0] for l in ring if l[0] != self.my_id]
             i = self.all_nodes.index(self.my_id)
             self.all_nodes = self.all_nodes[i:] + self.all_nodes[:i]
             self.nodes_right = self.all_nodes[:len(self.all_nodes)//2]

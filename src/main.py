@@ -5,9 +5,12 @@ import sys
 import pika
 import json
 import random
+import base64
+from Crypto.Hash import SHA256
 
 from lib.config import MAIN_Q, QUEUE_PREFIX, RANDOM_START, RANDOM_END
 from lib.config import DEFAULT_MATRIX_SIZE, ID, NEIGHBORS
+from lib.config import PUB_KEY, HASH
 from lib.graph_gen import gen_graph
 
 
@@ -26,6 +29,7 @@ class MainLauncher:
         self.adjacencies = gen_graph(n, s)
         self.nodes_id = []
         self.id_stored = []
+        self.keys = dict()
 # _________________________________________________________________________
 # _______________________ LAUNCH NETWORK___________________________________
 
@@ -44,6 +48,7 @@ class MainLauncher:
         # collect the id from all nodes in the network
         print("Starting to collect nodes ids ....")
         self.collect_nodes_id()
+        self.get_all_keys_hash()
         print("Done.")
 
         # send to each node the list of its neighbors ids
@@ -105,10 +110,11 @@ class MainLauncher:
             self.channel.basic_ack(method_f.delivery_tag)
 
             # check if id already here, replace if needed
-            node_id = new_node_id = json.loads(body)
+            msg = json.loads(body)
+            node_id = new_node_id = msg[ID]
             if node_id in self.id_stored:
                 new_node_id = self.choose_new_id()
-
+            self.keys[new_node_id] = msg[PUB_KEY]
             # store
             self.id_stored += [new_node_id]
             self.nodes_id += [(node_id, new_node_id)]
@@ -127,6 +133,12 @@ class MainLauncher:
             new_id = rng.randrange(RANDOM_START, RANDOM_END)
         return new_id
 
+    def get_all_keys_hash(self):
+        concat_str = "".join(self.keys.values())
+        h = SHA256.new()
+        h.update(concat_str)
+        self.all_keys_hash = base64.b64encode(h.digest())
+
 # _________________________________________________________________________
 # _______________________ SEND NEIGHBORS IDS ______________________________
 
@@ -143,7 +155,7 @@ class MainLauncher:
             send_queue = QUEUE_PREFIX + str(node_id) + "__main_q"
             self.channel.queue_declare(send_queue)
 
-            msg = {ID: new_node_id, NEIGHBORS: neighbors}
+            msg = {ID: new_node_id, NEIGHBORS: neighbors, HASH: self.all_keys_hash}
             self.send_msg(json.dumps(msg), send_queue)
 
 # _________________________________________________________________________
