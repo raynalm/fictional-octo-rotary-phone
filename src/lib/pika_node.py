@@ -199,7 +199,37 @@ class PikaNode:
         elif cmd == HELP:
             self.display_help()
 
-    def send_on_ring(self, msg_type, msg_body, recv_id, direction=RIGHT):
+    def display_help(self):
+        console_print("Commmands :\n'%s' -> lists network's nodes\n"
+                      "'%s recv_id msg' -> sends a message\n"
+                      "'%s' -> display help\n"
+                      "'%s recv_id filename' -> request a file"
+                      % (LIST_NODES, SEND_MSG, HELP, ASK_FILE))
+
+    def get_msg_non_blocking(self):
+        try:
+            m_frame, header_frame, body = self.channel.basic_get(self.in_queue)
+            if m_frame:
+                self.channel.basic_ack(m_frame.delivery_tag)
+                msg = json.loads(body)
+                if msg[ROUTE]:
+                    self.route_msg(msg)
+                elif int(msg[RECEIVER]) == self.my_id:
+                    self.open_msg(msg)
+                else:
+                    if msg[DIRECTION] == LEFT:
+                        msg[ROUTE] = self.route_left[1:]
+                    else:
+                        msg[ROUTE] = self.route_right[1:]
+                        self.send_msg(msg, self.route_right[0])
+            # else -> no message on the queue
+        except pika.exceptions.ChannelClosed:
+            self.exit_program()
+
+# _____________________________________________________________________________
+# _______________________ RING METHODS ________________________________________
+
+    def send_on_ring(self, msg_type, msg_body, recv_id, filename=None, direction=RIGHT):
         route = self.route_right if direction == RIGHT else self.route_left
         packet = {
             TYPE: msg_type,
@@ -207,8 +237,10 @@ class PikaNode:
             RECEIVER: recv_id,
             DIRECTION: direction,
             ROUTE: route[1:],
-            SENDER: self.my_id
+            SENDER: self.my_id,
+            FILENAME: filename
         }
+        print("sending %s" % packet)
         self.send_msg(packet, route[0])
 
     def ring_send_msg(self, cmd):
@@ -237,26 +269,6 @@ class PikaNode:
                 cmd_spl[1]
             )
 
-    def get_msg_non_blocking(self):
-        try:
-            m_frame, header_frame, body = self.channel.basic_get(self.in_queue)
-            if m_frame:
-                self.channel.basic_ack(m_frame.delivery_tag)
-                msg = json.loads(body)
-                if msg[ROUTE]:
-                    self.route_msg(msg)
-                elif int(msg[RECEIVER]) == self.my_id:
-                    self.open_msg(msg)
-                else:
-                    if msg[DIRECTION] == LEFT:
-                        msg[ROUTE] = self.route_left[1:]
-                    else:
-                        msg[ROUTE] = self.route_right[1:]
-                        self.send_msg(msg, self.route_right[0])
-            # else -> no message on the queue
-        except pika.exceptions.ChannelClosed:
-            self.exit_program()
-
     def route_msg(self, msg):
         assert(msg[ROUTE] != [])
         recv_id = int(msg[ROUTE][0])
@@ -264,31 +276,31 @@ class PikaNode:
         self.send_msg(msg, recv_id)
 
     def open_msg(self, msg):
+        print("opening %s" % msg)
         if msg[TYPE] == RING_MSG:
             console_print(
                 "[%s] %s" % (msg[SENDER], msg[BODY])
             )
         elif msg[TYPE] == RING_FILE:
-            f = open(msg[FILENAME], 'wb')
-            f.write(base64.b64decode(msg[BODY]))
-            f.close()
+            if msg[FILENAME] == NO_SUCH_FILE:
+                console_print("Invalid filename")
+            else:
+                f = open(msg[FILENAME], 'wb')
+                f.write(base64.b64decode(msg[BODY]))
+                f.close()
+                console_print("%s copy successful" % msg[FILENAME])
         elif msg[TYPE] == RING_ASK_FILE:
             self.ring_send_file(msg[BODY], msg[SENDER])
 
-    def ring_send_file(self, filename, recv_id):
+    def ring_send_file(self, filename, recv_id, direction=RIGHT):
         try:
             f = open(filename, 'rb')
         except IOError:
             filename = NO_SUCH_FILE
-        if recv_id in self.nodes_left:
-            di = LEFT
-            route = self.route_left
-        else:
-            di = RIGHT
-            route = self.route_right
+        route = self.route_right if direction == RIGHT else self.route_left
         packet = {
                 TYPE: RING_FILE,
-                DIRECTION: di,
+                DIRECTION: direction,
                 ROUTE: route[1:],
                 RECEIVER: recv_id,
                 SENDER: self.my_id,
@@ -296,14 +308,9 @@ class PikaNode:
                 if filename != NO_SUCH_FILE else None,
                 FILENAME: filename
         }
+        print("sending file %s" % packet)
         self.send_msg(packet, route[0])
 
-    def display_help(sellf):
-        console_print("Commmands :\n'%s' -> lists network's nodes\n"
-                      "'%s recv_id msg' -> sends a message\n"
-                      "'%s' -> display help\n"
-                      "'%s recv_id filename' -> request a file"
-                      % (LIST_NODES, SEND_MSG, HELP, ASK_FILE))
 # _____________________________________________________________________________
 # _______________________ CALLBACKS ___________________________________________
 
