@@ -170,11 +170,14 @@ class PikaNode:
     def main_loop(self):
         self.in_main_loop = True
         while self.in_main_loop:
-            # check if user issued a command
-            if select.select([sys.stdin], [], [], 0.0)[0]:
-                self.process_cmd()
-            self.get_msg_non_blocking()
-            time.sleep(0.1)
+            try:
+                # check if user issued a command
+                if select.select([sys.stdin], [], [], 0.0)[0]:
+                    self.process_cmd()
+                self.get_msg_non_blocking()
+                time.sleep(0.1)
+            except:
+                self.in_main_loop = False
         self.exit_program()
 
     def process_cmd(self):
