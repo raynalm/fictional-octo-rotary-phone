@@ -7,6 +7,7 @@ import select
 import time
 import base64
 
+from lib.config import PIKA_CONNECTION_PARAMETERS
 from lib.config import QUEUE_PREFIX, MAIN_Q, MAIN_LAUNCHER
 from lib.config import ANSWER, REFLUX, FLUX, YES, ID, NEIGHBORS
 from lib.config import NO, PRUNE_OUR_LINK, PRUNED, LEADER
@@ -44,7 +45,7 @@ class PikaNode:
         Initializes the connection with Rabbitmq
         """
         self.connection = pika.BlockingConnection(
-            pika.ConnectionParameters(host='localhost')
+            PIKA_CONNECTION_PARAMETERS
         )
         self.channel = self.connection.channel()
         print("Connection initialized")
@@ -81,9 +82,6 @@ class PikaNode:
 
         # get the virtual ring created by the leader
         self.recv_msg(self.broadcast_callback)
-
-        print(self.route_left)
-        print(self.route_right)
 
         # enter main loop
         self.main_loop()
@@ -173,7 +171,9 @@ class PikaNode:
 
     def process_cmd(self):
         cmd = raw_input()
-        if cmd == QUIT:
+        if not cmd:
+            pass
+        elif cmd == QUIT:
             self.exit_program()
         elif cmd.split()[0] == SEND_MSG:
             self.ring_send_msg(cmd)
@@ -188,6 +188,18 @@ class PikaNode:
         elif cmd == HELP:
             self.display_help()
 
+    def send_on_ring(self, msg_type, msg_body, recv_id, direction=RIGHT):
+        route = self.route_right if direction == RIGHT else self.route_left
+        packet = {
+            TYPE: msg_type,
+            BODY: msg_body,
+            RECEIVER: recv_id,
+            DIRECTION: direction,
+            ROUTE: route[1:],
+            SENDER: self.my_id
+        }
+        self.send_msg(packet, route[0])
+
     def ring_send_msg(self, cmd):
         cmd_spl = cmd.split()
         if len(cmd_spl) < 3 or int(cmd_spl[1]) not in self.all_nodes:
@@ -195,23 +207,11 @@ class PikaNode:
                           "For instance, '%s 471 hello mister 471"
                           % (SEND_MSG, SEND_MSG))
         else:
-            recv_id = cmd_spl[1]
-            if recv_id in self.nodes_left:
-                di = LEFT
-            else:
-                di = RIGHT
-            route = self.route_left if di == LEFT else self.route_right
-            packet = {
-                TYPE: RING_MSG,
-                DIRECTION: di,
-                ROUTE: route[1:],
-                RECEIVER: recv_id,
-                SENDER: self.my_id,
-                BODY: cmd[cmd.index(cmd_spl[2]):]
-            }
-            console_print("sending on ring : %s, %s, %s"
-                          % (packet, route[0], di))
-            self.send_msg(packet, route[0])
+            self.send_on_ring(
+                RING_MSG,
+                cmd[cmd.index(cmd_spl[2]):],
+                cmd_spl[1]
+            )
 
     def ring_ask_file(self, cmd):
         cmd_spl = cmd.split()
@@ -220,39 +220,22 @@ class PikaNode:
                           "For instance, '%s 471 new_file.txt'"
                           % (ASK_FILE, ASK_FILE))
         else:
-            recv_id = cmd_spl[1]
-            if recv_id in self.nodes_left:
-                di = LEFT
-                route = self.route_left
-            else:
-                di = RIGHT
-                route = self.route_right
-            packet = {
-                TYPE: RING_ASK_FILE,
-                DIRECTION: di,
-                ROUTE: route[1:],
-                RECEIVER: recv_id,
-                SENDER: self.my_id,
-                BODY: cmd[cmd.index(cmd_spl[2]):]
-            }
-            console_print("sending on ring : %s, %s, %s"
-                          % (packet, route[0], di))
-            self.send_msg(packet, route[0])
+            self.send_on_ring(
+                RING_ASK_FILE,
+                cmd[cmd.index(cmd_spl[2]):],
+                cmd_spl[1]
+            )
 
     def get_msg_non_blocking(self):
         m_frame, header_frame, body = self.channel.basic_get(self.in_queue)
         if m_frame:
             self.channel.basic_ack(m_frame.delivery_tag)
             msg = json.loads(body)
-            print("recv %s" % msg)
             if msg[ROUTE]:
-                print("routing")
                 self.route_msg(msg)
             elif int(msg[RECEIVER]) == self.my_id:
-                print("opening")
                 self.open_msg(msg)
             else:
-                print("routing")
                 if msg[DIRECTION] == LEFT:
                     msg[ROUTE] = self.route_left[1:]
                 else:
@@ -267,7 +250,6 @@ class PikaNode:
         self.send_msg(msg, recv_id)
 
     def open_msg(self, msg):
-        print("opening msg %s" % msg)
         if msg[TYPE] == RING_MSG:
             console_print(
                 "[%s] %s" % (msg[SENDER], msg[BODY])
@@ -275,14 +257,11 @@ class PikaNode:
         elif msg[TYPE] == RING_FILE:
             f = open(msg[FILENAME], 'wb')
             f.write(base64.b64decode(msg[BODY]))
+            f.close()
         elif msg[TYPE] == RING_ASK_FILE:
-            print("aask file")
             self.ring_send_file(msg[BODY], msg[SENDER])
-        else:
-            print("???")
 
     def ring_send_file(self, filename, recv_id):
-        print("i want to send a file now")
         try:
             f = open(filename, 'rb')
         except IOError:
@@ -299,11 +278,10 @@ class PikaNode:
                 ROUTE: route[1:],
                 RECEIVER: recv_id,
                 SENDER: self.my_id,
-                BODY: base64.b64decode(f.read())
+                BODY: base64.b64encode(f.read())
                 if filename != NO_SUCH_FILE else None,
                 FILENAME: filename
         }
-        print("sending %s" % packet)
         self.send_msg(packet, route[0])
 
     def display_help(sellf):
@@ -435,5 +413,6 @@ class PikaNode:
 
     def exit_program(self):
         self.channel.queue_delete(queue=self.in_queue)
+        self.channel.close()
         self.connection.close()
         console_print("bye")

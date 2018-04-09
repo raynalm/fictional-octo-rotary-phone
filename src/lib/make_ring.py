@@ -1,5 +1,5 @@
 import heapq as hq
-
+import graphviz as gv
 from lib.config import LEADER, WHITE, BLACK
 
 
@@ -19,6 +19,7 @@ def make_ring(node):
         color[n] = WHITE
     color[node.my_id] = BLACK
     ring = make_ring_dfs(node, node.my_id)
+    draw_ring(node.graph, ring)
 
     # compute routes for the virtual ring
     ring = [
@@ -70,3 +71,18 @@ def get_path(edges, start, end):
             if v == end:
                 return path + [v]
             hq.heappush(q, (d+1, v, path + [v]))
+
+
+def draw_ring(edges, ring):
+    gg = gv.Digraph(format="png")
+    for u in edges:
+        gg.node("%s" % u)
+
+    for u in edges:
+        for v in edges[u]:
+            if u < v:
+                gg.edge("%s" % u, "%s" % v, dir="none", color="blue")
+    for i in range(len(ring)-1):
+        gg.edge("%s" % ring[i], "%s" % ring[i+1], color="red")
+    gg.edge("%s" % ring[-1], "%s" % ring[0], color="red")
+    gg.render("graph", view=True)

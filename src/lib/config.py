@@ -1,9 +1,29 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import pika
+
 """
 This file contains all constants, along with configuration variables
 """
+
+USE_LOCALLY = True
+if USE_LOCALLY:
+    PIKA_CONNECTION_PARAMETERS = pika.ConnectionParameters(host='localhost')
+else:
+    HOST_URL = '42.42.42.42'
+    CREDENTIALS = ('user', 'pass')
+    PIKA_PORT = 5672
+    PIKA_CONNECTION_PARAMETERS = pika.ConnectionParameters(
+        HOST_URL,
+        PIKA_PORT,
+        '/',
+        CREDENTIALS
+    )
+
+
+
+
 
 RANDOM_START = 8
 RANDOM_END = 1000
