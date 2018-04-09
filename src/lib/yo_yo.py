@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from lib.config import YES, NO, SOURCE, SINK, LEADER, PRUNED, IN, OUT
-from lib.config import INTERMEDIATE, PRUNE_OUR_LINK, DONT_PRUNE_OUR_LINK
+from lib.config import *
+from lib.constants import *
 
 
 # _____________________________________________________________________________

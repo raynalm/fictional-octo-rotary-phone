@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
 import pika
 import json
@@ -7,14 +8,8 @@ import select
 import time
 import base64
 
-from lib.config import PIKA_CONNECTION_PARAMETERS
-from lib.config import QUEUE_PREFIX, MAIN_Q, MAIN_LAUNCHER
-from lib.config import ANSWER, REFLUX, FLUX, YES, ID, NEIGHBORS
-from lib.config import NO, PRUNE_OUR_LINK, PRUNED, LEADER
-from lib.config import QUIT, SEND_MSG, LIST_NODES, RIGHT, LEFT, SENDER
-from lib.config import DIRECTION, ROUTE, RECEIVER, BODY, TYPE, RING_MSG
-from lib.config import RING_FILE, FILENAME, ASK_FILE, HELP
-from lib.config import RING_ASK_FILE, NO_SUCH_FILE
+from lib.config import *
+from lib.constants import *
 
 from lib.yo_yo import yo_yo
 from lib.shout import shout
@@ -240,7 +235,6 @@ class PikaNode:
             SENDER: self.my_id,
             FILENAME: filename
         }
-        print("sending %s" % packet)
         self.send_msg(packet, route[0])
 
     def ring_send_msg(self, cmd):
@@ -276,7 +270,6 @@ class PikaNode:
         self.send_msg(msg, recv_id)
 
     def open_msg(self, msg):
-        print("opening %s" % msg)
         if msg[TYPE] == RING_MSG:
             console_print(
                 "[%s] %s" % (msg[SENDER], msg[BODY])
@@ -308,7 +301,6 @@ class PikaNode:
                 if filename != NO_SUCH_FILE else None,
                 FILENAME: filename
         }
-        print("sending file %s" % packet)
         self.send_msg(packet, route[0])
 
 # _____________________________________________________________________________
@@ -412,12 +404,7 @@ class PikaNode:
             self.route_left = [l[::-1] for l in ring if l[-1] == self.my_id][0][1:]  # noqa: E501
 
             # get list of all nodes in the network
-            # and split ring in left side and right side
-            self.all_nodes = [l[0] for l in ring]
-            i = self.all_nodes.index(self.my_id)
-            self.all_nodes = self.all_nodes[i:] + self.all_nodes[:i]
-            self.nodes_right = self.all_nodes[:len(self.all_nodes)//2]
-            self.nodes_left = self.all_nodes[len(self.all_nodes)//2:]
+            self.all_nodes = [l[0] for l in ring if l[0] != self.my_id]
 
             # spread info to neighbors
             for v in self.neighbors_ids:

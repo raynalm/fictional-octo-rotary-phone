@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
-from lib.config import YES, NO, LEADER, FLUX
+from lib.constants import *
 
 
 def shout(node):

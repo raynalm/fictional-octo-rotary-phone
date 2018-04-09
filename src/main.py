@@ -6,8 +6,8 @@ import pika
 import json
 import random
 
-from lib.config import MAIN_Q, QUEUE_PREFIX, RANDOM_START, RANDOM_END
-from lib.config import DEFAULT_MATRIX_SIZE, ID, NEIGHBORS
+from lib.config import *
+from lib.constants import *
 from lib.graph_gen import gen_graph
 
 

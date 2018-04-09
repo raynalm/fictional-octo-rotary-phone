@@ -1,6 +1,9 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import heapq as hq
 import graphviz as gv
-from lib.config import LEADER, WHITE, BLACK
+from lib.constants import *
 
 
 color = dict()
@@ -26,7 +29,7 @@ def make_ring(node):
         get_path(node.graph, ring[i], ring[i+1]) for i in range(len(ring)-1)
     ] + [get_path(node.graph, ring[-1], ring[0])]
 
-    print(ring)
+    print("The ring route is : %s" % ring)
     # get own right and left routes
     node.route_right = next(l for l in ring if l[0] == node.my_id)[1:]
     node.route_left = [l[::-1] for l in ring if l[-1] == node.my_id][0][1:]
