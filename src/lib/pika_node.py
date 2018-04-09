@@ -5,12 +5,16 @@ import json
 import sys
 import select
 import time
+import base64
 
 from lib.config import QUEUE_PREFIX, MAIN_Q, MAIN_LAUNCHER
 from lib.config import ANSWER, REFLUX, FLUX, YES, ID, NEIGHBORS
 from lib.config import NO, PRUNE_OUR_LINK, PRUNED, LEADER
 from lib.config import QUIT, SEND_MSG, LIST_NODES, RIGHT, LEFT, SENDER
 from lib.config import DIRECTION, ROUTE, RECEIVER, BODY, TYPE, RING_MSG
+from lib.config import RING_FILE, FILENAME, ASK_FILE, HELP
+from lib.config import RING_ASK_FILE, NO_SUCH_FILE
+
 from lib.yo_yo import yo_yo
 from lib.shout import shout
 from lib.make_ring import make_ring
@@ -179,6 +183,10 @@ class PikaNode:
                     ', '.join({str(e) for e in self.all_nodes})
                 )
             )
+        elif cmd.split()[0] == ASK_FILE:
+            self.ring_ask_file(cmd)
+        elif cmd == HELP:
+            self.display_help()
 
     def ring_send_msg(self, cmd):
         cmd_spl = cmd.split()
@@ -205,17 +213,46 @@ class PikaNode:
                           % (packet, route[0], di))
             self.send_msg(packet, route[0])
 
+    def ring_ask_file(self, cmd):
+        cmd_spl = cmd.split()
+        if len(cmd_spl) < 3 or int(cmd_spl[1]) not in self.all_nodes:
+            console_print("ask a file syntax : '%s recv_id filename'\n"
+                          "For instance, '%s 471 new_file.txt'"
+                          % (ASK_FILE, ASK_FILE))
+        else:
+            recv_id = cmd_spl[1]
+            if recv_id in self.nodes_left:
+                di = LEFT
+                route = self.route_left
+            else:
+                di = RIGHT
+                route = self.route_right
+            packet = {
+                TYPE: RING_ASK_FILE,
+                DIRECTION: di,
+                ROUTE: route[1:],
+                RECEIVER: recv_id,
+                SENDER: self.my_id,
+                BODY: cmd[cmd.index(cmd_spl[2]):]
+            }
+            console_print("sending on ring : %s, %s, %s"
+                          % (packet, route[0], di))
+            self.send_msg(packet, route[0])
+
     def get_msg_non_blocking(self):
         m_frame, header_frame, body = self.channel.basic_get(self.in_queue)
         if m_frame:
             self.channel.basic_ack(m_frame.delivery_tag)
             msg = json.loads(body)
-            console_print("got messge : %s" % msg)
+            print("recv %s" % msg)
             if msg[ROUTE]:
+                print("routing")
                 self.route_msg(msg)
             elif int(msg[RECEIVER]) == self.my_id:
+                print("opening")
                 self.open_msg(msg)
             else:
+                print("routing")
                 if msg[DIRECTION] == LEFT:
                     msg[ROUTE] = self.route_left[1:]
                 else:
@@ -227,15 +264,54 @@ class PikaNode:
         assert(msg[ROUTE] != [])
         recv_id = int(msg[ROUTE][0])
         msg[ROUTE] = msg[ROUTE][1:]
-        print("routing %s towards %s" % (msg, recv_id))
         self.send_msg(msg, recv_id)
 
     def open_msg(self, msg):
+        print("opening msg %s" % msg)
         if msg[TYPE] == RING_MSG:
             console_print(
                 "[%s] %s" % (msg[SENDER], msg[BODY])
             )
+        elif msg[TYPE] == RING_FILE:
+            f = open(msg[FILENAME], 'wb')
+            f.write(base64.b64decode(msg[BODY]))
+        elif msg[TYPE] == RING_ASK_FILE:
+            print("aask file")
+            self.ring_send_file(msg[BODY], msg[SENDER])
+        else:
+            print("???")
 
+    def ring_send_file(self, filename, recv_id):
+        print("i want to send a file now")
+        try:
+            f = open(filename, 'rb')
+        except IOError:
+            filename = NO_SUCH_FILE
+        if recv_id in self.nodes_left:
+            di = LEFT
+            route = self.route_left
+        else:
+            di = RIGHT
+            route = self.route_right
+        packet = {
+                TYPE: RING_FILE,
+                DIRECTION: di,
+                ROUTE: route[1:],
+                RECEIVER: recv_id,
+                SENDER: self.my_id,
+                BODY: base64.b64decode(f.read())
+                if filename != NO_SUCH_FILE else None,
+                FILENAME: filename
+        }
+        print("sending %s" % packet)
+        self.send_msg(packet, route[0])
+
+    def display_help(sellf):
+        console_print("Commmands :\n'%s' -> lists network's nodes\n"
+                      "'%s recv_id msg' -> sends a message\n"
+                      "'%s' -> display help\n"
+                      "'%s recv_id filename' -> request a file"
+                      % (LIST_NODES, SEND_MSG, HELP, ASK_FILE))
 # _____________________________________________________________________________
 # _______________________ CALLBACKS ___________________________________________
 

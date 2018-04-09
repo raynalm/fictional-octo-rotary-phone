@@ -24,11 +24,16 @@ BODY = "BODY"
 TYPE = "TYPE"
 RING_MSG = "RING_MSG"
 SENDER = "SENDER"
-
+RING_ASK_FILE = "RING_ASK_FILE"
+RING_FILE = "RING_FILE"
+FILENAME = "FILENAME"
+NO_SUCH_FILE = "NO SUCH FILE"
 # COMMAND MACROS ______________________________________________________
 QUIT = "/q"
 SEND_MSG = "/s"
 LIST_NODES = "/l"
+HELP = "/h"
+ASK_FILE = "/ask_file"
 
 # YO-YO ALGORITHM MACROS ______________________________________________________
 # edges
